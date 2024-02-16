@@ -1,15 +1,43 @@
+import pathlib
+
 import numpy as np
 import sklearn
+from Bio import SeqIO
 
 RANDOM_STATE = 42
 
 
-def load_data_and_labels(coding_filepath, noncoding_filepath):
+def load_and_filter_embeddings(embeddings_filepath, max_length=None):
+    """
+    Filter the given embeddings to remove any that correspond to sequences that are too long.
+    """
+    embeddings_filepath = pathlib.Path(embeddings_filepath)
+    embeddings = np.load(embeddings_filepath)
+
+    if max_length is None:
+        return embeddings
+
+    # hack to get the peptides fasta file corresponding to the embeddings.
+    peptides_fasta_filepath = embeddings_filepath.with_name(
+        embeddings_filepath.stem.replace("embeddings", "peptides.fa")
+    )
+
+    # the indices of the embeddings to keep.
+    inds = [
+        ind
+        for ind, record in enumerate(SeqIO.parse(peptides_fasta_filepath, "fasta"))
+        if len(record.seq) <= max_length
+    ]
+
+    return embeddings[inds, :]
+
+
+def load_data_and_labels(coding_filepath, noncoding_filepath, max_length=None):
     """
     Load embeddings from the given filepaths and create labels for the data.
     """
-    x_coding = np.load(coding_filepath)
-    x_noncoding = np.load(noncoding_filepath)
+    x_coding = load_and_filter_embeddings(coding_filepath, max_length)
+    x_noncoding = load_and_filter_embeddings(noncoding_filepath, max_length)
 
     # create labels for the data using 1 for coding and 0 for noncoding sequences.
     labels_coding = np.ones(x_coding.shape[0])
@@ -26,8 +54,9 @@ def train(
     noncoding_train_filepath,
     coding_test_filepath=None,
     noncoding_test_filepath=None,
+    max_length=None,
 ):
-    X, y = load_data_and_labels(coding_train_filepath, noncoding_train_filepath)
+    X, y = load_data_and_labels(coding_train_filepath, noncoding_train_filepath, max_length)
 
     # use PCA to reduce the dimensionality of the data to make training faster.
     # (`n_components` was chosen empirically from a plot of the explained variance.)
@@ -36,11 +65,12 @@ def train(
 
     X_pcs = pca.transform(X)
 
-    X_train, X_valid, y_train, y_valid = sklearn.model_selection.train_test_split(
+    X_train, X_validation, y_train, y_validation = sklearn.model_selection.train_test_split(
         X_pcs, y, test_size=0.2, random_state=RANDOM_STATE
     )
 
-    # Train a random forest classifier using params optimized for speed.
+    # `n_estimators` and `min_samples_split` were chosen empirically for speed;
+    # perf doesn't improve much with more estimators or deeper trees.
     model = sklearn.ensemble.RandomForestClassifier(
         n_estimators=30,
         min_samples_split=10,
@@ -50,17 +80,45 @@ def train(
     )
     model.fit(X_train, y_train)
 
-    # Evaluate the model
-    train_score = model.score(X_train, y_train)
-    valid_score = model.score(X_valid, y_valid)
+    y_train_pred = model.predict(X_train)
+    y_validation_pred = model.predict(X_validation)
 
-    print(f"Training accuracy: {train_score:.2f}")
-    print(f"Validation accuracy: {valid_score:.2f}")
+    train_metrics = calc_metrics(y_train, y_train_pred)
+    pretty_print_metrics(train_metrics, header="Training metrics")
 
-    # If test data is provided, evaluate the model on the test set.
+    validation_metrics = calc_metrics(y_validation, y_validation_pred)
+    pretty_print_metrics(validation_metrics, header="Validation metrics")
+
     if coding_test_filepath is not None and noncoding_test_filepath is not None:
-        X_test, y_test = load_data_and_labels(coding_test_filepath, noncoding_test_filepath)
+        X_test, y_test = load_data_and_labels(
+            coding_test_filepath, noncoding_test_filepath, max_length
+        )
 
         X_test_pcs = pca.transform(X_test)
-        test_score = model.score(X_test_pcs, y_test)
-        print(f"Test accuracy: {test_score:.2f}")
+        y_test_pred = model.predict(X_test_pcs)
+        test_metrics = calc_metrics(y_test, y_test_pred)
+        pretty_print_metrics(test_metrics, header="Test metrics")
+
+
+def calc_metrics(y_true, y_pred):
+    """
+    Calculate precision, recall, and F1 score for the given true and predicted labels.
+    """
+    accuracy = sklearn.metrics.accuracy_score(y_true, y_pred)
+    precision = sklearn.metrics.precision_score(y_true, y_pred)
+    recall = sklearn.metrics.recall_score(y_true, y_pred)
+    f1 = sklearn.metrics.f1_score(y_true, y_pred)
+
+    return {"accuracy": accuracy, "precision": precision, "recall": recall, "f1": f1}
+
+
+def pretty_print_metrics(metrics, header=None):
+    """
+    Print the given dict of metrics in a human-readable format.
+    """
+    output = "\n".join([f"{metric.capitalize()}: {value:.2f}" for metric, value in metrics.items()])
+
+    if header is not None:
+        output = f"{header}\n{output}"
+
+    print(output)
