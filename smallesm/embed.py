@@ -34,6 +34,10 @@ MODEL_NAMES_TO_DIMS = {
     help="Layer index from which to extract the embeddings (use -1 for the last layer)",
 )
 @click.option("--output-filepath", type=click.Path(exists=False), required=True, help="Output file")
+def embed_command(fasta_filepath, model_name, layer_ind, output_filepath):
+    embed(fasta_filepath, model_name, layer_ind, output_filepath)
+
+
 def embed(fasta_filepath, model_name, layer_ind, output_filepath):
     """
     Generate per-sequence embeddings for the sequences in a FASTA file using an ESM model,
@@ -79,7 +83,7 @@ def embed(fasta_filepath, model_name, layer_ind, output_filepath):
     with torch.no_grad():
         mean_embeddings = []
 
-        for batch_ind, (sequence_ids, sequences, toks) in tqdm.tqdm(enumerate(data_loader)):  # noqa B007
+        for sequence_ids, sequences, toks in tqdm.tqdm((data_loader), total=len(batches)):  # noqa B007
             if torch.cuda.is_available():
                 toks = toks.to(device="cuda", non_blocking=True)
 
@@ -92,9 +96,9 @@ def embed(fasta_filepath, model_name, layer_ind, output_filepath):
                 # the first token is the BOS token, so we skip it.
                 raw_embedding = raw_embeddings[ind, 1 : truncate_len + 1]
 
-                # call clone on the tensor, following the ESM script.
-                # TODO (KC): this may not be necessary because we use numpy,
-                # rather than torch, to save the tensor.
+                # call clone on the tensor because that's what the ESM script does.
+                # TODO (KC): this may not be necessary because we are using numpy,
+                # rather than torch, to save the tensors.
                 mean_embedding = raw_embedding.mean(0).clone()
                 mean_embeddings.append(mean_embedding.numpy())
 

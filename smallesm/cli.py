@@ -10,5 +10,5 @@ def cli(ctx):
         click.echo(ctx.get_help())
 
 
-cli.add_command(embed.embed)
-cli.add_command(translate.translate)
+cli.add_command(embed.embed_command)
+cli.add_command(translate.translate_command)
