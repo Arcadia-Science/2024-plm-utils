@@ -7,7 +7,7 @@ import torch
 import tqdm
 
 # the allowed ESM-2 model variants and their embeddings dimensions.
-# (taken from https://github.com/facebookresearch/esm)
+# (from https://github.com/facebookresearch/esm)
 MODEL_NAMES_TO_DIMS = {
     "esm2_t48_15B_UR50D": 5120,
     "esm2_t36_3B_UR50D": 2560,
@@ -51,28 +51,34 @@ def embed(fasta_filepath, model_name, layer_ind, output_filepath):
     which is not a good idea.
     """
 
-    # TODO (KC): understand these numbers (they are copied from esm/scripts/extract.py)
+    # TODO (KC): understand the logic behind these numbers
+    # (they are copied from esm/scripts/extract.py)
     toks_per_batch = 4096
     truncation_seq_length = 1022
 
+    device = torch.device(
+        "cuda"
+        if torch.cuda.is_available()
+        else "mps"
+        if torch.backends.mps.is_available()
+        else "cpu"
+    )
+    print(f"Using device '{device}' for model inference.")
+
     model, alphabet = esm.pretrained.load_model_and_alphabet(model_name)
     model.eval()
-
-    if torch.cuda.is_available():
-        model = model.cuda()
-        print("Using GPU")
-    else:
-        print("Warning: no GPU found")
+    model.to(device)
 
     dataset = esm.FastaBatchedDataset.from_file(fasta_filepath)
     batches = dataset.get_batch_indices(toks_per_batch, extra_toks_per_seq=1)
 
-    data_loader = torch.utils.data.DataLoader(
+    # note: the dataloader yields batches in the form of `(sequence_ids, sequences, tokens)`
+    dataloader = torch.utils.data.DataLoader(
         dataset,
         collate_fn=alphabet.get_batch_converter(truncation_seq_length),
         batch_sampler=batches,
     )
-    print(f"Read {fasta_filepath} with {len(dataset)} sequences")
+    print(f"Read file '{fasta_filepath}' and found {len(dataset)} sequences")
 
     if layer_ind == -1:
         layer_ind = model.num_layers
@@ -83,10 +89,8 @@ def embed(fasta_filepath, model_name, layer_ind, output_filepath):
     with torch.no_grad():
         mean_embeddings = []
 
-        for sequence_ids, sequences, toks in tqdm.tqdm((data_loader), total=len(batches)):  # noqa B007
-            if torch.cuda.is_available():
-                toks = toks.to(device="cuda", non_blocking=True)
-
+        for _, sequences, toks in tqdm.tqdm(dataloader, total=len(batches)):
+            toks = toks.to(device, non_blocking=True)
             results = model(toks, repr_layers=[layer_ind], return_contacts=False)
             raw_embeddings = results["representations"][layer_ind].to(device="cpu")
 
@@ -96,23 +100,22 @@ def embed(fasta_filepath, model_name, layer_ind, output_filepath):
                 # the first token is the BOS token, so we skip it.
                 raw_embedding = raw_embeddings[ind, 1 : truncate_len + 1]
 
-                # call clone on the tensor because that's what the ESM script does.
-                # TODO (KC): this may not be necessary because we are using numpy,
-                # rather than torch, to save the tensors.
-                mean_embedding = raw_embedding.mean(0).clone()
-                mean_embeddings.append(mean_embedding.numpy())
+                # we call `detach` to create a new tensor that is not part of the computation graph.
+                mean_embedding = raw_embedding.mean(dim=0).detach().cpu().numpy()
+                mean_embeddings.append(mean_embedding)
 
         mean_embeddings = np.stack(mean_embeddings)
         print(f"Embeddings matrix shape: {mean_embeddings.shape}")
 
         if mean_embeddings.shape[1] != MODEL_NAMES_TO_DIMS[model_name]:
             print(
-                f"Warning: Expected {MODEL_NAMES_TO_DIMS[model_name]}-dimensional embeddings, "
-                f"but got {mean_embeddings.shape[1]}"
+                f"Warning: expected {MODEL_NAMES_TO_DIMS[model_name]}-dimensional embeddings, "
+                f"but got {mean_embeddings.shape[1]}."
             )
         if mean_embeddings.shape[0] != len(dataset):
-            raise ValueError(
-                f"Expected {len(dataset)} embeddings, but only generated {mean_embeddings.shape[0]}"
+            print(
+                f"Warning: the number of sequences in the fasta file was {len(dataset)}, "
+                f"but the number of generated embeddings is {mean_embeddings.shape[0]}."
             )
 
         np.save(output_filepath, mean_embeddings)

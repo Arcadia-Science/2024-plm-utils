@@ -88,7 +88,7 @@ def filter_longest_orfs(output_filepath):
             if len(record.seq) > len(longest_record.seq):
                 longest_record = record
 
-        # if the sequence ID has changed, then we have seen all the ORFs from the previous sequence.
+        # if the sequence_id has changed, then we have seen all the ORFs from the previous sequence.
         else:
             longest_records.append(longest_record)
             longest_record = record

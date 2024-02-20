@@ -58,7 +58,7 @@ def train(
     Train a random forest classifier using embeddings of peptides from coding and noncoding
     transcripts and print the validation and test metrics.
 
-    Nomenclature note: we follow the common ML convention of using `x` to denote
+    Nomenclature note: we follow the sklearn convention of using `x` to denote
     the matrix of input features and `y` to denote the labels we are trying to predict.
     """
 
@@ -70,7 +70,6 @@ def train(
     # (`n_components` was chosen empirically from a plot of the explained variance.)
     pca = sklearn.decomposition.PCA(n_components=30)
     pca.fit(x_all)
-
     x_pcs = pca.transform(x_all)
 
     x_train, x_validation, y_train, y_validation = sklearn.model_selection.train_test_split(
@@ -78,7 +77,9 @@ def train(
     )
 
     # `n_estimators` and `min_samples_split` were chosen empirically for fast training,
-    # but perf doesn't improve much with more estimators or deeper trees.
+    # but performance doesn't seem to improve much with more estimators or deeper trees.
+    # `class_weight="balanced"` is used to compensate for the class imbalance
+    # between coding and noncoding transcripts.
     model = sklearn.ensemble.RandomForestClassifier(
         n_estimators=30,
         min_samples_split=10,
@@ -86,14 +87,14 @@ def train(
         n_jobs=-1,
         random_state=RANDOM_STATE,
     )
+
     model.fit(x_train, y_train)
 
     y_train_pred = model.predict(x_train)
-    y_validation_pred = model.predict(x_validation)
-
     train_metrics = calc_metrics(y_train, y_train_pred)
     pretty_print_metrics(train_metrics, header="Training metrics")
 
+    y_validation_pred = model.predict(x_validation)
     validation_metrics = calc_metrics(y_validation, y_validation_pred)
     pretty_print_metrics(validation_metrics, header="Validation metrics")
 
