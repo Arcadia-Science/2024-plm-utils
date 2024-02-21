@@ -43,7 +43,7 @@ def embed(fasta_filepath, model_name, layer_ind, output_filepath):
     Generate per-sequence embeddings for the sequences in a FASTA file using an ESM model,
     and write the resulting matrix of embeddings to a numpy file.
 
-    This function is loosely based on the `esm/sscripts/extract.py` module
+    This function is loosely based on the `esm/scripts/extract.py` module
     from the facebookresearch/esm repository.
 
     TODO (KC): currently there is no explicit association between rows of the embeddings matrix
