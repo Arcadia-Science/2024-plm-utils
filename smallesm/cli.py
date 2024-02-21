@@ -1,6 +1,6 @@
 import click
 
-from smallesm import embed, train, translate
+from smallesm import construct_datasets, embed, train, translate
 
 
 @click.group(invoke_without_command=True, context_settings=dict(help_option_names=["-h", "--help"]))
@@ -13,3 +13,4 @@ def cli(ctx):
 cli.add_command(embed.command, name="embed")
 cli.add_command(translate.command, name="translate")
 cli.add_command(train.command, name="train")
+cli.add_command(construct_datasets.command, name="construct-datasets")
