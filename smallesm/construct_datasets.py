@@ -27,7 +27,6 @@ def download_file(url, output_path):
     """
     Download a file from `url` to `output_path` with streaming.
     """
-    print(f"Downloading {url} to {output_path}")
     with requests.get(url, stream=True) as response:
         response.raise_for_status()
         with open(output_path, "wb") as file:
@@ -42,7 +41,7 @@ def download_files(urls_filepaths, overwrite=False):
     urls_filepaths: a list of (url, filepath) tuples
     """
     futures = []
-    with ThreadPoolExecutor(max_workers=10) as executor:
+    with ThreadPoolExecutor(max_workers=20) as executor:
         for url, output_filepath in urls_filepaths:
             if overwrite or not output_filepath.exists():
                 futures.append(executor.submit(download_file, url, output_filepath))
@@ -108,8 +107,7 @@ def preprocess_transcriptomes(output_dirpath, overwrite=False):
 
 def prepend_filename_to_sequence_ids(input_filepath, output_filepath):
     """
-    Prepend the sequence IDs in the input FASTA file with the filename of the input file,
-    which is assumed to be a species identifier.
+    Prepend the sequence IDs in the input FASTA file with the filename of the input file.
     """
     if output_filepath.exists():
         print(f"Skipping {output_filepath} because it already exists")
