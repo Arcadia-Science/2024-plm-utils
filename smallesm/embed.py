@@ -34,7 +34,7 @@ MODEL_NAMES_TO_DIMS = {
     help="Layer index from which to extract the embeddings (use -1 for the last layer)",
 )
 @click.option("--output-filepath", type=click.Path(exists=False), required=True, help="Output file")
-def embed_command(fasta_filepath, model_name, layer_ind, output_filepath):
+def command(fasta_filepath, model_name, layer_ind, output_filepath):
     embed(fasta_filepath, model_name, layer_ind, output_filepath)
 
 

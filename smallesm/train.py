@@ -1,7 +1,11 @@
 import pathlib
 
+import click
 import numpy as np
 import sklearn
+import sklearn.decomposition
+import sklearn.ensemble
+import sklearn.model_selection
 from Bio import SeqIO
 
 RANDOM_STATE = 42
@@ -131,3 +135,30 @@ def pretty_print_metrics(metrics, header=None):
         output = f"{header}\n{output}"
 
     print(output)
+
+
+@click.command()
+@click.option("--coding-train-filepath", type=click.Path(exists=True), required=True)
+@click.option("--noncoding-train-filepath", type=click.Path(exists=True), required=True)
+@click.option("--coding-test-filepath", type=click.Path(exists=True), required=False)
+@click.option("--noncoding-test-filepath", type=click.Path(exists=True), required=False)
+@click.option(
+    "--max-length",
+    type=int,
+    required=False,
+    help="Maximum length of the peptides to use for training and testing",
+)
+def command(
+    coding_train_filepath,
+    noncoding_train_filepath,
+    coding_test_filepath,
+    noncoding_test_filepath,
+    max_length,
+):
+    train(
+        coding_train_filepath=coding_train_filepath,
+        noncoding_train_filepath=noncoding_train_filepath,
+        coding_test_filepath=coding_test_filepath,
+        noncoding_test_filepath=noncoding_test_filepath,
+        max_length=max_length,
+    )

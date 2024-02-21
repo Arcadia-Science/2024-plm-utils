@@ -1,6 +1,6 @@
 import click
 
-from smallesm import embed, translate
+from smallesm import embed, train, translate
 
 
 @click.group(invoke_without_command=True, context_settings=dict(help_option_names=["-h", "--help"]))
@@ -10,5 +10,6 @@ def cli(ctx):
         click.echo(ctx.get_help())
 
 
-cli.add_command(embed.embed_command, name="embed")
-cli.add_command(translate.translate_command, name="translate")
+cli.add_command(embed.command, name="embed")
+cli.add_command(translate.command, name="translate")
+cli.add_command(train.command, name="train")

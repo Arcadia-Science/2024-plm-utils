@@ -16,7 +16,7 @@ from Bio import SeqIO
     help="Output FASTA file",
 )
 @click.option("--longest-only", is_flag=True, help="Only retain the longest ORF for each sequence")
-def translate_command(input_filepath, output_filepath, longest_only):
+def command(input_filepath, output_filepath, longest_only):
     translate(input_filepath, output_filepath, longest_only)
 
 
