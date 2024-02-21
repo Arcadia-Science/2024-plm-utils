@@ -13,7 +13,8 @@ RANDOM_STATE = 42
 
 def load_and_filter_embeddings(embeddings_filepath, max_length=None):
     """
-    Filter the given embeddings to remove any that correspond to sequences that are longer than the max_length.
+    Filter the given embeddings to remove any that correspond to sequences
+    that are longer than the max_length.
     """
     embeddings_filepath = pathlib.Path(embeddings_filepath)
     embeddings = np.load(embeddings_filepath)
@@ -38,17 +39,17 @@ def load_embeddings_and_labels(coding_filepath, noncoding_filepath, max_length=N
     """
     Load embeddings from the given filepaths and create labels for coding/noncoding.
     """
-    embs_coding = load_and_filter_embeddings(coding_filepath, max_length)
-    embs_noncoding = load_and_filter_embeddings(noncoding_filepath, max_length)
+    embeddings_coding = load_and_filter_embeddings(coding_filepath, max_length)
+    embeddings_noncoding = load_and_filter_embeddings(noncoding_filepath, max_length)
 
     # create labels for the embeddings using 1 for 'coding' and 0 for 'noncoding'.
-    labels_coding = np.ones(embs_coding.shape[0])
-    labels_noncoding = np.zeros(embs_noncoding.shape[0])
+    labels_coding = np.ones(embeddings_coding.shape[0])
+    labels_noncoding = np.zeros(embeddings_noncoding.shape[0])
 
-    embs_all = np.concatenate([embs_coding, embs_noncoding], axis=0)
+    embeddings_all = np.concatenate([embeddings_coding, embeddings_noncoding], axis=0)
     labels_all = np.concatenate([labels_coding, labels_noncoding])
 
-    return embs_all, labels_all
+    return embeddings_all, labels_all
 
 
 def train(
