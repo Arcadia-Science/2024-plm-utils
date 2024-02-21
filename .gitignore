@@ -1,6 +1,9 @@
+/notebooks/
 tmp/
 
 /tmp*
+
+/.ruff_cache/
 
 # packages installed in editable mode
 envs/src/**
