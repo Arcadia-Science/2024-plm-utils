@@ -13,4 +13,4 @@ def cli(ctx):
 cli.add_command(embed.command, name="embed")
 cli.add_command(translate.command, name="translate")
 cli.add_command(train.command, name="train")
-cli.add_command(construct_datasets.command, name="construct-datasets")
+cli.add_command(construct_datasets.cli, name="construct-datasets")

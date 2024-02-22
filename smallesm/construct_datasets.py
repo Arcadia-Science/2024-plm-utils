@@ -1,4 +1,6 @@
 import concurrent.futures
+import functools
+import os
 import pathlib
 import shutil
 import subprocess
@@ -11,25 +13,73 @@ import requests
 import tqdm
 
 
-def cat_and_gunzip_files(input_filepaths, output_filepath):
+def add_suffix(filepath, suffix):
     """
-    Concatenate and gunzip a list of files to a single file.
+    Add a suffix to the filename of a filepath.
+    For example, if the filepath is "/path/to/file.txt" and the suffix is "modified",
+    this function will return "/path/to/file-modified.txt".
+
+    TODO: this function doesn't handle filenames with multiple extensions.
+    For example, if the filename is "file.tar.gz" and the suffix is "modified",
+    this function will return "file.tar-modified.gz".
     """
-    if output_filepath.exists():
-        print(f"Skipping {output_filepath} because it already exists")
-        return
-    subprocess.run(
-        f"cat {' '.join(map(str, input_filepaths))} | gunzip > {output_filepath}", shell=True
-    )
+    return filepath.with_name(f"{filepath.stem}-{suffix}{filepath.suffix}")
 
 
-def download_file(url, output_path):
+def log_calls(func):
+    """
+    Decorator to print the arguments and keyword arguments of a function call.
+    """
+
+    @functools.wraps(func)
+    def wrapper(*args, **kwargs):
+        print(f"Function `{func.__name__}` called with args {args} and kwargs {kwargs}")
+        return func(*args, **kwargs)
+
+    return wrapper
+
+
+def skip_if_output_exists(func):
+    """
+    Decorator to skip running a function if the output file already exists
+    and an "overwrite" kwarg is not set to `True`.
+
+    The output filepath is assumed to be the second positional argument to the function
+    or else the value of the "output_filepath" kwarg.
+    """
+
+    @functools.wraps(func)
+    def wrapper(*args, **kwargs):
+        overwrite = kwargs.get("overwrite", False)
+        output_filepath = kwargs.get("output_filepath")
+        if output_filepath is None:
+            output_filepath = args[1]
+        if output_filepath.exists() and not overwrite:
+            print(
+                f"Skipping `{func.__name__}` because the output file already exists "
+                f"at '{output_filepath}'"
+            )
+            return
+
+        # assume the wrapped function does not expect an "overwrite" kwarg.
+        kwargs.pop("overwrite", None)
+
+        # TODO: creating the output directory here is a bit of a hack.
+        output_filepath.parent.mkdir(parents=True, exist_ok=True)
+        return func(*args, **kwargs)
+
+    return wrapper
+
+
+@log_calls
+@skip_if_output_exists
+def download_file(url, output_filepath):
     """
     Download a file from `url` to `output_path` with streaming.
     """
     with requests.get(url, stream=True) as response:
         response.raise_for_status()
-        with open(output_path, "wb") as file:
+        with open(output_filepath, "wb") as file:
             for chunk in response.iter_content(chunk_size=8192):
                 file.write(chunk)
 
@@ -42,11 +92,8 @@ def download_files(urls_filepaths, overwrite=False):
     """
     futures = []
     with ThreadPoolExecutor(max_workers=20) as executor:
-        for url, output_filepath in urls_filepaths:
-            if overwrite or not output_filepath.exists():
-                futures.append(executor.submit(download_file, url, output_filepath))
-            if not overwrite and output_filepath.exists():
-                print(f"Skipping {output_filepath} because it already exists")
+        for url, filepath in urls_filepaths:
+            futures.append(executor.submit(download_file, url, filepath, overwrite=overwrite))
 
         for future in tqdm.tqdm(
             concurrent.futures.as_completed(futures),
@@ -59,59 +106,79 @@ def download_files(urls_filepaths, overwrite=False):
                 print(f"Error downloading dataset: {exception}")
 
 
-def download_transcriptomes(dataset_metadata_filepath, output_dirpath, overwrite=False):
-    """ """
+@log_calls
+def download_transcriptomes(
+    dataset_metadata_filepath, output_dirpath, overwrite=False, dry_run=False
+):
+    """
+    Download the coding and non-coding transcriptomes for each species in the metadata file.
+
+    The metadata file should have the following columns:
+        - species_id: a short and unique identifier for the species
+        - root_url: the base URL for the species
+        - cdna_endpoint: the relative URL for the fasta file of coding transcripts
+        - ncrna_endpoint: the relative URL for the fasta file of non-coding transcripts
+
+    The coding and non-coding transcripts are downloaded to separate subdirectories
+    of the output directory and named with the species_id:
+        output_dirpath/
+            cdna/
+                {species_id}.fa.gz
+            ncrna/
+                {species_id}.fa.gz
+    """
 
     metadata = pd.read_csv(dataset_metadata_filepath, sep="\t")
 
-    (output_dirpath / "cdna").mkdir(parents=True, exist_ok=True)
-    (output_dirpath / "ncrna").mkdir(parents=True, exist_ok=True)
+    cdna_dirpath = output_dirpath / "cdna"
+    cdna_dirpath.mkdir(parents=True, exist_ok=True)
+
+    ncrna_dirpath = output_dirpath / "ncrna"
+    ncrna_dirpath.mkdir(parents=True, exist_ok=True)
 
     urls_filepaths = []
     for _, row in metadata.iterrows():
-        urls_filepaths += [
-            (
-                urllib.parse.urljoin(row.root_url, row.cdna_endpoint),
-                output_dirpath / "cdna" / f"{row.species_id}.fa.gz",
-            ),
-            (
-                urllib.parse.urljoin(row.root_url, row.ncrna_endpoint),
-                output_dirpath / "ncrna" / f"{row.species_id}.fa.gz",
-            ),
-        ]
-    download_files(urls_filepaths, overwrite=overwrite)
+        for endpoint, dirpath in [
+            (row.cdna_endpoint, cdna_dirpath),
+            (row.ncrna_endpoint, ncrna_dirpath),
+        ]:
+            urls_filepaths.append(
+                (urllib.parse.urljoin(row.root_url, endpoint), dirpath / f"{row.species_id}.fa.gz")
+            )
+
+    if not dry_run:
+        download_files(urls_filepaths, overwrite=overwrite)
+    return cdna_dirpath, ncrna_dirpath
 
 
-def preprocess_transcriptomes(output_dirpath, overwrite=False):
+@log_calls
+def gunzip_file(filepath, overwrite=False):
     """
-    Preprocess the downloaded transcriptomes by:
-    - Prepending the filename (assumed to be a species ID) to the sequence IDs
-    - Filtering out non-protein-coding transcripts from the raw cDNA files
-
+    Gunzip a file.
     """
-    for cdna_filepath in (output_dirpath / "cdna").glob("*.fa.gz"):
-        prepend_filename_to_sequence_ids(
-            cdna_filepath, (output_dirpath / "cdna-labeled" / cdna_filepath.name)
-        )
-
-    for ncrna_filepath in (output_dirpath / "ncrna").glob("*.fa.gz"):
-        prepend_filename_to_sequence_ids(
-            ncrna_filepath, (output_dirpath / "ncrna-labeled" / ncrna_filepath.name)
-        )
-
-    for cdna_filepath in (output_dirpath / "cdna-labeled").glob("*.fa.gz"):
-        extract_protein_coding_orfs_from_cdna(
-            cdna_filepath, (output_dirpath / "cdna-labeled-coding" / cdna_filepath.name)
-        )
+    # remove the .gz extension from the output filepath.
+    output_filepath = filepath.with_suffix("")
+    if output_filepath.exists() and not overwrite:
+        print(f"Skipping gunzip because {output_filepath} already exists")
+        return
+    subprocess.run(f"gunzip -c {filepath} > {output_filepath}", shell=True)
 
 
+@log_calls
+@skip_if_output_exists
+def cat_files(input_filepaths, output_filepath):
+    """
+    Concatenate a list of files to a single file.
+    """
+    subprocess.run(f"cat {' '.join(map(str, input_filepaths))} > {output_filepath}", shell=True)
+
+
+@log_calls
+@skip_if_output_exists
 def prepend_filename_to_sequence_ids(input_filepath, output_filepath):
     """
     Prepend the sequence IDs in the input FASTA file with the filename of the input file.
     """
-    if output_filepath.exists():
-        print(f"Skipping {output_filepath} because it already exists")
-        return
 
     output_filepath.parent.mkdir(parents=True, exist_ok=True)
 
@@ -128,16 +195,14 @@ def prepend_filename_to_sequence_ids(input_filepath, output_filepath):
     )
 
 
+@log_calls
+@skip_if_output_exists
 def extract_protein_coding_orfs_from_cdna(input_filepath, output_filepath):
     """
     Filter out transcripts that are not of type 'protein_coding'.
     This is necessary because ensembl cDNA files include transcripts for pseudogenes
     and other non-coding RNAs.
     """
-    if output_filepath.exists():
-        print(f"Skipping {output_filepath} because it already exists")
-        return
-
     output_filepath.parent.mkdir(parents=True, exist_ok=True)
 
     command = (
@@ -147,76 +212,162 @@ def extract_protein_coding_orfs_from_cdna(input_filepath, output_filepath):
     subprocess.run(command, shell=True)
 
 
+@log_calls
 def cluster_transcripts(input_filepath, output_filepath_prefix, overwrite=False):
     """
     Cluster the transcripts in the input FASTA file using mmseqs2.
     """
-    if len(list(output_filepath_prefix.parent.glob("*cluster.tsv"))) and not overwrite:
-        print(f"Skipping clustering because {output_filepath_prefix} already exists")
+    # this is one of the files that will be created by mmseqs2; we need to hard-code its name
+    # so we can check if it exists and skip running mmseqs2 if it does.
+    mmseqs_output_filepath = (
+        output_filepath_prefix.parent / f"{output_filepath_prefix.name}_rep_seq.fasta"
+    )
+    if mmseqs_output_filepath.exists() and not overwrite:
+        print(f"Skipping clustering because {mmseqs_output_filepath} already exists")
         return
 
     output_filepath_prefix.parent.mkdir(parents=True, exist_ok=True)
 
-    mmseqs_internal_dir = output_filepath_prefix.parent / "tmp_mmseqs2"
+    mmseqs_internal_dir = output_filepath_prefix.parent / "mmseqs-internal"
     command = (
         f"mmseqs easy-cluster {input_filepath} {output_filepath_prefix} "
         f"{mmseqs_internal_dir} --min-seq-id 0.8 --cov-mode 1 --cluster-mode 2"
     )
-    print(f"Running command: {command}")
+    print(f"Running mmseqs:\n{command}")
     subprocess.run(command, shell=True)
     shutil.rmtree(mmseqs_internal_dir)
 
 
-@click.command()
+@log_calls
+@skip_if_output_exists
+def intersect_fasta_files(input_filepaths, output_filepath):
+    """
+    Extract the sequences appear in both of the input FASTA files.
+    """
+    input_filepath_1, input_filepath_2 = input_filepaths
+    output_filepath.parent.mkdir(parents=True, exist_ok=True)
+
+    tmp_ids_filepath = input_filepath_1.with_suffix(".ids")
+    command = f"seqkit seq {input_filepath_1} --name --only-id > {tmp_ids_filepath}"
+    subprocess.run(command, shell=True)
+
+    command = f"seqkit grep -f {tmp_ids_filepath} {input_filepath_2} -o {output_filepath}"
+    subprocess.run(command, shell=True)
+    os.remove(tmp_ids_filepath)
+
+
+@log_calls
+@skip_if_output_exists
+def subsample_fasta_file(input_filepath, output_filepath, subsample_rate):
+    """
+    Subsample a FASTA file by a given rate.
+    """
+    command = f"seqkit sample -p {subsample_rate:0.3f} {input_filepath} -o {output_filepath}"
+    subprocess.run(command, shell=True)
+
+
+@log_calls
+@skip_if_output_exists
+def filter_by_sequence_id_prefix(input_filepath, output_filepath, prefix):
+    """
+    Filter a FASTA file by the prefix of its sequence IDs.
+    """
+    prefix = prefix.upper()
+    command = f"seqkit grep -r -p ^{prefix} {input_filepath} -o {output_filepath}"
+    subprocess.run(command, shell=True)
+
+
+@click.group()
+def cli():
+    pass
+
+
+@cli.command()
 @click.argument("dataset_metadata_filepath", type=click.Path(exists=True, path_type=pathlib.Path))
 @click.argument("output_dirpath", type=click.Path(path_type=pathlib.Path))
 @click.option("--overwrite", is_flag=True, help="Overwrite existing files")
-def command(dataset_metadata_filepath, output_dirpath, overwrite):
+def download(dataset_metadata_filepath, output_dirpath, overwrite):
     """
-    Download, preprocess, aggregate, and cluster transcriptomes from the given dataset.
+    Download the coding and non-coding transcriptomes for each species in the metadata file.
     """
-    download_transcriptomes(dataset_metadata_filepath, output_dirpath, overwrite=overwrite)
-    preprocess_transcriptomes(output_dirpath, overwrite=overwrite)
-
-    cat_and_gunzip_files(
-        (output_dirpath / "cdna-labeled-coding").glob("*.fa.gz"),
-        output_dirpath / "cdna-labeled-coding.fa",
-    )
-    cat_and_gunzip_files(
-        (output_dirpath / "ncrna-labeled").glob("*.fa.gz"),
-        output_dirpath / "ncrna-labeled.fa",
+    download_transcriptomes(
+        dataset_metadata_filepath, output_dirpath, overwrite=overwrite, dry_run=False
     )
 
-    # cat cdna and ncrna files together
-    subprocess.run(
-        " ".join(
-            map(
-                str,
-                [
-                    "cat",
-                    output_dirpath / "cdna-labeled-protein-coding.fa",
-                    output_dirpath / "ncrna-labeled.fa",
-                    ">",
-                    output_dirpath / "cdna-and-ncrna.fa",
-                ],
-            )
-        ),
-        shell=True,
+
+@cli.command()
+@click.argument("dataset_metadata_filepath", type=click.Path(exists=True, path_type=pathlib.Path))
+@click.argument("output_dirpath", type=click.Path(path_type=pathlib.Path))
+def construct(dataset_metadata_filepath, output_dirpath):
+    """
+    Construct the training datasets from the downloaded transcriptomes.
+
+    Assumes that the coding and non-coding transcriptomes have been downloaded
+    to the output_dirpath directory using the `download` command.
+
+    TODO: there is currently no overwrite option; the user must manually delete
+    output directories or files in order to re-run certain steps of this de facto pipeline.
+    """
+    cdna_dirpath, ncrna_dirpath = download_transcriptomes(
+        dataset_metadata_filepath, output_dirpath, dry_run=True
     )
 
-    # cluster all of the transcripts to remove redundancy.
+    # prepend the species ID to the sequence IDs in all of the coding and noncoding fasta files.
+    # (we use the word "labeled" for this)
+    cdna_labeled_dirpath = add_suffix(cdna_dirpath, "labeled")
+    ncrna_labeled_dirpath = add_suffix(ncrna_dirpath, "labeled")
+
+    for filepath in cdna_dirpath.glob("*.fa.gz"):
+        prepend_filename_to_sequence_ids(filepath, (cdna_labeled_dirpath / filepath.name))
+
+    for filepath in ncrna_dirpath.glob("*.fa.gz"):
+        prepend_filename_to_sequence_ids(filepath, (ncrna_labeled_dirpath / filepath.name))
+
+    # concatenate all of the labeled coding and noncoding transcripts into single files.
+    all_cdna_filepath = output_dirpath / "all-cdna.fa.gz"
+    all_ncrna_filepath = output_dirpath / "all-ncrna.fa.gz"
+    cat_files(cdna_labeled_dirpath.glob("*.fa.gz"), all_cdna_filepath)
+    cat_files(ncrna_labeled_dirpath.glob("*.fa.gz"), all_ncrna_filepath)
+
+    # filter out transcripts from the cdna file that are not truly protein coding.
+    # (by definition, this not necessary for the noncoding transcripts)
+    all_cdna_coding_filepath = output_dirpath / "all-cdna-coding.fa.gz"
+    extract_protein_coding_orfs_from_cdna(all_cdna_filepath, all_cdna_coding_filepath)
+
+    # merge the coding and noncoding transcripts into a single file and unzip it.
+    merged_cdna_and_ncrna_filepath = output_dirpath / "cdna-and-ncrna.fa.gz"
+    cat_files((all_cdna_coding_filepath, all_ncrna_filepath), merged_cdna_and_ncrna_filepath)
+    gunzip_file(merged_cdna_and_ncrna_filepath)
+
+    # cluster all of the transcripts using mmseqs2 to reduce redundancy.
     cluster_transcripts(
-        input_filepath=output_dirpath / "cdna-and-ncrna.fa",
-        output_filepath_prefix=output_dirpath / "mmseqs-output",
-        overwrite=overwrite,
+        input_filepath=merged_cdna_and_ncrna_filepath.with_suffix(""),
+        output_filepath_prefix=output_dirpath / "mmseqs" / "mmseqs-output",
     )
 
-    # TODO: split clustered transcripts into separate files for cDNA and ncRNA
-    # "$ seqkit seq tmp/raw/cdna-labeled-protein-coding.fa --name --only-id > cdna-ids.txt
-    # "$ seqkit grep -f cdna-ids.txt clustered-seqs.fasta -o cdna-labeled-coding-dedup.fa"
+    # this is the name of the file created by mmseqs2 containing representative sequences
+    # for each cluster.
+    rep_seqs_filepath = output_dirpath / "mmseqs" / "mmseqs-output_rep_seq.fasta"
 
-    # check that all of the species are represented in the clustered sequences
-    # $ seqkit sample -p 0.001 cdna-labeled-coding-dedup.fa| seqkit seq -n -i | sort > tmp.txt
+    for kind, filepath in [("cdna", all_cdna_coding_filepath), ("ncrna", all_ncrna_filepath)]:
+        clustered_filepath = output_dirpath / f"{kind}-clustered.fa"
+        intersect_fasta_files(
+            input_filepaths=[rep_seqs_filepath, filepath], output_filepath=clustered_filepath
+        )
 
-    # filter by species (here human)
-    # $ seqkit grep -r -p ^HSAP cdna-labeled-coding-dedup.fa -o tmp.fa
+        subsample_period = 10
+        subsampled_filepath = add_suffix(clustered_filepath, f"ssx{subsample_period}")
+        subsample_fasta_file(
+            input_filepath=clustered_filepath,
+            output_filepath=subsampled_filepath,
+            subsample_rate=(1 / subsample_period),
+        )
+
+        metadata = pd.read_csv(dataset_metadata_filepath, sep="\t")
+        for species_id in metadata.species_id:
+            output_filepath = output_dirpath / subsampled_filepath.stem / f"{species_id}.fa"
+            filter_by_sequence_id_prefix(
+                input_filepath=subsampled_filepath,
+                output_filepath=output_filepath,
+                prefix=species_id,
+            )
