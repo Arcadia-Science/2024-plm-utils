@@ -16,17 +16,21 @@ from smallesm.embed import embed
 from smallesm.translate import translate
 
 
-def add_suffix_to_path(path, suffix):
+def add_suffix_to_path(path: pathlib.Path, suffix: str) -> pathlib.Path:
     """
-    Add a suffix to the filename or final directory name in the given path.
-    For example, if the filepath is "/path/to/file.txt" and the suffix is "modified",
-    this function will return "/path/to/file-modified.txt".
+    Add a suffix to the filename or final directory name in the given path,
+    assuming the filename or directory name does not begin with a dot.
 
-    TODO: this function doesn't handle filenames with multiple extensions.
-    For example, if the filename is "file.tar.gz" and the suffix is "modified",
-    this function will return "file.tar-modified.gz".
+    Examples for the suffix "modified":
+        "/path/to/dir" -> "/path/to/dir-modified"
+        "/path/to/file.txt" -> "/path/to/file-modified.txt"
+        "/path/to/file.fa.gz" -> "/path/to/file-modified.fa.gz"
     """
-    return path.with_name(f"{path.stem}-{suffix}{path.suffix}")
+    dot = "."
+    stem, *exts = path.name.split(dot)
+    new_stem = f"{stem}-{suffix}"
+    new_name = dot.join((new_stem, *exts))
+    return path.with_name(new_name)
 
 
 def log_calls(func):
@@ -131,9 +135,9 @@ def download_transcriptomes(
     metadata = pd.read_csv(dataset_metadata_filepath, sep="\t")
 
     cdna_dirpath = output_dirpath / "cdna"
-    cdna_dirpath.mkdir(parents=True, exist_ok=True)
-
     ncrna_dirpath = output_dirpath / "ncrna"
+
+    cdna_dirpath.mkdir(parents=True, exist_ok=True)
     ncrna_dirpath.mkdir(parents=True, exist_ok=True)
 
     urls_filepaths = []
@@ -277,7 +281,7 @@ def download(dataset_metadata_filepath, output_dirpath, overwrite):
     Download the coding and non-coding transcriptomes for each species in the metadata file.
     """
     download_transcriptomes(
-        dataset_metadata_filepath, output_dirpath, overwrite=overwrite, dry_run=False
+        dataset_metadata_filepath, output_dirpath / "raw", overwrite=overwrite, dry_run=False
     )
 
 
@@ -294,36 +298,39 @@ def construct(dataset_metadata_filepath, output_dirpath):
     TODO: there is currently no overwrite option; the user must manually delete
     output directories or files in order to re-run certain steps of this de facto pipeline.
     """
-    cdna_dirpath, ncrna_dirpath = download_transcriptomes(
-        dataset_metadata_filepath, output_dirpath, dry_run=True
+    raw_cdna_dirpath, raw_ncrna_dirpath = download_transcriptomes(
+        dataset_metadata_filepath, output_dirpath / "raw", dry_run=True
     )
 
-    # prepend the species ID to the sequence IDs in all of the coding and noncoding fasta files.
-    # (we use the word "labeled" for this)
-    cdna_labeled_dirpath = add_suffix_to_path(cdna_dirpath, "labeled")
-    ncrna_labeled_dirpath = add_suffix_to_path(ncrna_dirpath, "labeled")
+    output_dirpath = output_dirpath / "processed"
 
-    for filepath in cdna_dirpath.glob("*.fa.gz"):
+    # prepend the species ID to the sequence IDs in all of the coding and noncoding fasta files.
+    # (we use the word "labeled" to refer to this)
+    cdna_labeled_dirpath = output_dirpath / "cdna-labeled"
+    ncrna_labeled_dirpath = output_dirpath / "ncrna-labeled"
+
+    for filepath in raw_cdna_dirpath.glob("*.fa.gz"):
         prepend_filename_to_sequence_ids(filepath, (cdna_labeled_dirpath / filepath.name))
 
-    for filepath in ncrna_dirpath.glob("*.fa.gz"):
+    for filepath in raw_ncrna_dirpath.glob("*.fa.gz"):
         prepend_filename_to_sequence_ids(filepath, (ncrna_labeled_dirpath / filepath.name))
 
     # concatenate all of the labeled coding and noncoding transcripts into single files.
-    all_cdna_filepath = output_dirpath / "all-cdna.fa.gz"
-    all_ncrna_filepath = output_dirpath / "all-ncrna.fa.gz"
+    all_cdna_filepath = output_dirpath / "cdna.fa.gz"
+    all_ncrna_filepath = output_dirpath / "ncrna.fa.gz"
     cat_files(cdna_labeled_dirpath.glob("*.fa.gz"), all_cdna_filepath)
     cat_files(ncrna_labeled_dirpath.glob("*.fa.gz"), all_ncrna_filepath)
 
     # filter out transcripts from the cdna file that are not truly protein coding.
     # (by definition, this not necessary for the noncoding transcripts)
-    all_cdna_coding_filepath = output_dirpath / "all-cdna-coding.fa.gz"
+    all_cdna_coding_filepath = add_suffix_to_path(all_cdna_filepath, "coding")
     extract_protein_coding_transcripts_from_cdna(all_cdna_filepath, all_cdna_coding_filepath)
+    all_cdna_filepath = all_cdna_coding_filepath
 
     # merge the coding and noncoding transcripts into a single file for clustering.
     merged_cdna_and_ncrna_filepath = output_dirpath / "cdna-and-ncrna.fa.gz"
     cat_files(
-        input_filepaths=(all_cdna_coding_filepath, all_ncrna_filepath),
+        input_filepaths=(all_cdna_filepath, all_ncrna_filepath),
         output_filepath=merged_cdna_and_ncrna_filepath,
     )
     merged_cdna_and_ncrna_unzipped_filepath = merged_cdna_and_ncrna_filepath.with_suffix("")
@@ -345,13 +352,15 @@ def construct(dataset_metadata_filepath, output_dirpath):
         mmseqs_output_filepath_prefix.parent / f"{mmseqs_output_filepath_prefix.stem}_rep_seq.fasta"
     )
 
-    for kind, filepath in [("cdna", all_cdna_coding_filepath), ("ncrna", all_ncrna_filepath)]:
-        clustered_filepath = output_dirpath / f"{kind}-clustered.fa"
+    for filepath in [all_cdna_filepath, all_ncrna_filepath]:
+        # split the representative sequences into separate files for coding and noncoding.
+        clustered_filepath = add_suffix_to_path(filepath, "clustered")
         intersect_fasta_files(
             input_filepaths=[rep_seqs_filepath, filepath], output_filepath=clustered_filepath
         )
 
-        subsample_period = 1
+        # subsample the clustered files to reduce the number of sequences and make training faster.
+        subsample_period = 3
         subsampled_filepath = add_suffix_to_path(clustered_filepath, f"ssx{subsample_period}")
         subsample_fasta_file(
             input_filepath=clustered_filepath,
@@ -359,9 +368,12 @@ def construct(dataset_metadata_filepath, output_dirpath):
             subsample_rate=(1 / subsample_period),
         )
 
+        # split the subsampled files into separate files for each species using the prefixes
+        # we added to the sequence IDs above (using `prepend_filename_to_sequence_ids`).
         metadata = pd.read_csv(dataset_metadata_filepath, sep="\t")
+        dirname = subsampled_filepath.with_suffix("").stem
         for species_id in metadata.species_id:
-            output_filepath = output_dirpath / subsampled_filepath.stem / f"{species_id}.fa"
+            output_filepath = output_dirpath / dirname / f"{species_id}.fa"
             filter_by_sequence_id_prefix(
                 input_filepath=subsampled_filepath,
                 output_filepath=output_filepath,
@@ -380,9 +392,9 @@ def translate_and_embed(dirpaths):
 
     for dirpath in dirpaths:
         peptides_dirpath = add_suffix_to_path(dirpath, "peptides")
-        peptides_dirpath.mkdir(parents=True, exist_ok=True)
+        embeddings_dirpath = add_suffix_to_path(dirpath, f"embeddings-{model_name}")
 
-        embeddings_dirpath = add_suffix_to_path(dirpath, f"embeddings--{model_name}")
+        peptides_dirpath.mkdir(parents=True, exist_ok=True)
         embeddings_dirpath.mkdir(parents=True, exist_ok=True)
 
         for input_filepath in dirpath.glob("*.fa"):
