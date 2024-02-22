@@ -12,6 +12,9 @@ import pandas as pd
 import requests
 import tqdm
 
+from smallesm.embed import embed
+from smallesm.translate import translate
+
 
 def add_suffix(filepath, suffix):
     """
@@ -223,7 +226,10 @@ def cluster_transcripts(input_filepath, output_filepath_prefix, overwrite=False)
         output_filepath_prefix.parent / f"{output_filepath_prefix.name}_rep_seq.fasta"
     )
     if mmseqs_output_filepath.exists() and not overwrite:
-        print(f"Skipping clustering because {mmseqs_output_filepath} already exists")
+        print(
+            "mmseqs will not be run because one of its outputs already exists: "
+            f"'{mmseqs_output_filepath}'"
+        )
         return
 
     output_filepath_prefix.parent.mkdir(parents=True, exist_ok=True)
@@ -371,3 +377,31 @@ def construct(dataset_metadata_filepath, output_dirpath):
                 output_filepath=output_filepath,
                 prefix=species_id,
             )
+
+
+@cli.command()
+@click.argument("dirpath", type=click.Path(exists=True, path_type=pathlib.Path))
+def translate_and_embed(dirpath):
+    """
+    Translate the fasta files in the specified directory to protein sequences
+    and embed them using ESM.
+    """
+    model_name = "esm2_t6_8M_UR50D"
+    peptides_dirpath = add_suffix(dirpath, "peptides")
+    peptides_dirpath.mkdir(parents=True, exist_ok=True)
+
+    embeddings_dirpath = add_suffix(dirpath, f"embeddings--{model_name}")
+    embeddings_dirpath.mkdir(parents=True, exist_ok=True)
+
+    for filepath in dirpath.glob("*.fa"):
+        output_filepath = peptides_dirpath / filepath.name
+        translate(input_filepath=filepath, output_filepath=output_filepath, longest_only=True)
+
+        output_filepath = embeddings_dirpath / f"{filepath.stem}.npy"
+        print(f"Embedding {filepath} to {output_filepath}")
+        embed(
+            fasta_filepath=filepath,
+            model_name=model_name,
+            layer_ind=-1,
+            output_filepath=output_filepath,
+        )
