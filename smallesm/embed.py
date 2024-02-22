@@ -43,7 +43,7 @@ def embed(fasta_filepath, model_name, layer_ind, output_filepath):
     Generate per-sequence embeddings for the sequences in a FASTA file using an ESM model,
     and write the resulting matrix of embeddings to a numpy file.
 
-    This function is loosely based on the `esm/sscripts/extract.py` module
+    This function is loosely based on the `esm/scripts/extract.py` module
     from the facebookresearch/esm repository.
 
     TODO (KC): currently there is no explicit association between rows of the embeddings matrix
@@ -92,7 +92,7 @@ def embed(fasta_filepath, model_name, layer_ind, output_filepath):
         for _, sequences, toks in tqdm.tqdm(dataloader, total=len(batches)):
             toks = toks.to(device, non_blocking=True)
             results = model(toks, repr_layers=[layer_ind], return_contacts=False)
-            raw_embeddings = results["representations"][layer_ind].to(device="cpu")
+            raw_embeddings = results["representations"][layer_ind]
 
             for ind, sequence in enumerate(sequences):
                 truncate_len = min(len(sequence), truncation_seq_length)

@@ -31,6 +31,10 @@ def translate(input_filepath, output_filepath, longest_only):
     to drop all but the longest ORF found for each input sequence.
     """
 
+    # The start codons to use, including alternative start codons that are common in sORFs.
+    # (reference: doi 10.3389/fgene.2021.796060, page 2, column 1)
+    start_codons = ["TTG", "CTG", "ATG", "GTG", "ACG"]
+
     command = [
         "orfipy",
         input_filepath,
@@ -45,6 +49,8 @@ def translate(input_filepath, output_filepath, longest_only):
         # the codon table to use; '1' is the standard.
         "--table",
         1,
+        "--start",
+        ",".join(start_codons),
         # the minimum ORF length, in nucleotides.
         # we use 45nt because peptides shorter than 15aa are not thought to be structured.
         "--min",
