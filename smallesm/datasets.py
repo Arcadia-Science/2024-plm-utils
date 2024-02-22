@@ -380,28 +380,31 @@ def construct(dataset_metadata_filepath, output_dirpath):
 
 
 @cli.command()
-@click.argument("dirpath", type=click.Path(exists=True, path_type=pathlib.Path))
-def translate_and_embed(dirpath):
+@click.argument("dirpaths", nargs=-1, type=click.Path(exists=True, path_type=pathlib.Path))
+def translate_and_embed(dirpaths):
     """
     Translate the fasta files in the specified directory to protein sequences
     and embed them using ESM.
     """
     model_name = "esm2_t6_8M_UR50D"
-    peptides_dirpath = add_suffix(dirpath, "peptides")
-    peptides_dirpath.mkdir(parents=True, exist_ok=True)
 
-    embeddings_dirpath = add_suffix(dirpath, f"embeddings--{model_name}")
-    embeddings_dirpath.mkdir(parents=True, exist_ok=True)
+    for dirpath in dirpaths:
+        peptides_dirpath = add_suffix(dirpath, "peptides")
+        peptides_dirpath.mkdir(parents=True, exist_ok=True)
 
-    for filepath in dirpath.glob("*.fa"):
-        output_filepath = peptides_dirpath / filepath.name
-        translate(input_filepath=filepath, output_filepath=output_filepath, longest_only=True)
+        embeddings_dirpath = add_suffix(dirpath, f"embeddings--{model_name}")
+        embeddings_dirpath.mkdir(parents=True, exist_ok=True)
 
-        output_filepath = embeddings_dirpath / f"{filepath.stem}.npy"
-        print(f"Embedding {filepath} to {output_filepath}")
-        embed(
-            fasta_filepath=filepath,
-            model_name=model_name,
-            layer_ind=-1,
-            output_filepath=output_filepath,
-        )
+        for input_filepath in dirpath.glob("*.fa"):
+            peptides_filepath = peptides_dirpath / input_filepath.name
+            translate(
+                input_filepath=input_filepath, output_filepath=peptides_filepath, longest_only=True
+            )
+
+            embeddings_filepath = embeddings_dirpath / f"{input_filepath.stem}.npy"
+            embed(
+                fasta_filepath=peptides_filepath,
+                model_name=model_name,
+                layer_ind=-1,
+                output_filepath=embeddings_filepath,
+            )
