@@ -182,13 +182,8 @@ def prepend_filename_to_sequence_ids(input_filepath, output_filepath):
     """
     Prepend the sequence IDs in the input FASTA file with the filename of the input file.
     """
-
-    output_filepath.parent.mkdir(parents=True, exist_ok=True)
-
     sep = "_"
-    prefix = input_filepath.stem.upper()
-
-    # TODO: it appears that seqkit uses a dot instead of an underscore as the separator here.
+    prefix = input_filepath.stem.split(".")[0].upper()
     subprocess.run(
         (
             f"seqkit replace --pattern ^ --replacement {prefix}{sep} "
@@ -206,8 +201,6 @@ def extract_protein_coding_orfs_from_cdna(input_filepath, output_filepath):
     This is necessary because ensembl cDNA files include transcripts for pseudogenes
     and other non-coding RNAs.
     """
-    output_filepath.parent.mkdir(parents=True, exist_ok=True)
-
     command = (
         'seqkit grep --use-regexp --by-name --pattern "transcript_biotype:protein_coding" '
         f"-o {output_filepath} {input_filepath}"
@@ -248,10 +241,9 @@ def cluster_transcripts(input_filepath, output_filepath_prefix, overwrite=False)
 @skip_if_output_exists
 def intersect_fasta_files(input_filepaths, output_filepath):
     """
-    Extract the sequences appear in both of the input FASTA files.
+    Extract the sequences whose ids appear in both of the input FASTA files.
     """
     input_filepath_1, input_filepath_2 = input_filepaths
-    output_filepath.parent.mkdir(parents=True, exist_ok=True)
 
     tmp_ids_filepath = input_filepath_1.with_suffix(".ids")
     command = f"seqkit seq {input_filepath_1} --name --only-id > {tmp_ids_filepath}"
@@ -342,7 +334,10 @@ def construct(dataset_metadata_filepath, output_dirpath):
 
     # merge the coding and noncoding transcripts into a single file and unzip it.
     merged_cdna_and_ncrna_filepath = output_dirpath / "cdna-and-ncrna.fa.gz"
-    cat_files((all_cdna_coding_filepath, all_ncrna_filepath), merged_cdna_and_ncrna_filepath)
+    cat_files(
+        input_filepaths=(all_cdna_coding_filepath, all_ncrna_filepath),
+        output_filepath=merged_cdna_and_ncrna_filepath,
+    )
     gunzip_file(merged_cdna_and_ncrna_filepath)
 
     # cluster all of the transcripts using mmseqs2 to reduce redundancy.
@@ -361,7 +356,7 @@ def construct(dataset_metadata_filepath, output_dirpath):
             input_filepaths=[rep_seqs_filepath, filepath], output_filepath=clustered_filepath
         )
 
-        subsample_period = 10
+        subsample_period = 1
         subsampled_filepath = add_suffix(clustered_filepath, f"ssx{subsample_period}")
         subsample_fasta_file(
             input_filepath=clustered_filepath,
