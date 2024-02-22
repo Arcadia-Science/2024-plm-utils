@@ -16,9 +16,9 @@ from smallesm.embed import embed
 from smallesm.translate import translate
 
 
-def add_suffix(filepath, suffix):
+def add_suffix_to_path(path, suffix):
     """
-    Add a suffix to the filename of a filepath.
+    Add a suffix to the filename or final directory name in the given path.
     For example, if the filepath is "/path/to/file.txt" and the suffix is "modified",
     this function will return "/path/to/file-modified.txt".
 
@@ -26,7 +26,7 @@ def add_suffix(filepath, suffix):
     For example, if the filename is "file.tar.gz" and the suffix is "modified",
     this function will return "file.tar-modified.gz".
     """
-    return filepath.with_name(f"{filepath.stem}-{suffix}{filepath.suffix}")
+    return path.with_name(f"{path.stem}-{suffix}{path.suffix}")
 
 
 def log_calls(func):
@@ -78,7 +78,8 @@ def skip_if_output_exists(func):
 @skip_if_output_exists
 def download_file(url, output_filepath):
     """
-    Download a file from `url` to `output_path` with streaming.
+    Download a file from `url` to `output_path` with streaming to avoid loading the whole file
+    into memory at once.
     """
     with requests.get(url, stream=True) as response:
         response.raise_for_status()
@@ -98,11 +99,7 @@ def download_files(urls_filepaths, overwrite=False):
         for url, filepath in urls_filepaths:
             futures.append(executor.submit(download_file, url, filepath, overwrite=overwrite))
 
-        for future in tqdm.tqdm(
-            concurrent.futures.as_completed(futures),
-            total=len(futures),
-            desc="Downloading datasets",
-        ):
+        for future in tqdm.tqdm(concurrent.futures.as_completed(futures), total=len(futures)):
             try:
                 future.result()
             except Exception as exception:
@@ -155,24 +152,14 @@ def download_transcriptomes(
 
 
 @log_calls
-def gunzip_file(filepath, overwrite=False):
-    """
-    Gunzip a file.
-    """
-    # remove the .gz extension from the output filepath.
-    output_filepath = filepath.with_suffix("")
-    if output_filepath.exists() and not overwrite:
-        print(f"Skipping gunzip because {output_filepath} already exists")
-        return
-    subprocess.run(f"gunzip -c {filepath} > {output_filepath}", shell=True)
+@skip_if_output_exists
+def gunzip_file(input_filepath, output_filepath):
+    subprocess.run(f"gunzip -c {input_filepath} > {output_filepath}", shell=True)
 
 
 @log_calls
 @skip_if_output_exists
 def cat_files(input_filepaths, output_filepath):
-    """
-    Concatenate a list of files to a single file.
-    """
     subprocess.run(f"cat {' '.join(map(str, input_filepaths))} > {output_filepath}", shell=True)
 
 
@@ -180,9 +167,10 @@ def cat_files(input_filepaths, output_filepath):
 @skip_if_output_exists
 def prepend_filename_to_sequence_ids(input_filepath, output_filepath):
     """
-    Prepend the sequence IDs in the input FASTA file with the filename of the input file.
+    Prepend the filename of the input fasta file to its sequence IDs and write the result
+    to the output fasta file.
     """
-    sep = "_"
+    sep = "."
     prefix = input_filepath.stem.split(".")[0].upper()
     subprocess.run(
         (
@@ -195,7 +183,7 @@ def prepend_filename_to_sequence_ids(input_filepath, output_filepath):
 
 @log_calls
 @skip_if_output_exists
-def extract_protein_coding_orfs_from_cdna(input_filepath, output_filepath):
+def extract_protein_coding_transcripts_from_cdna(input_filepath, output_filepath):
     """
     Filter out transcripts that are not of type 'protein_coding'.
     This is necessary because ensembl cDNA files include transcripts for pseudogenes
@@ -209,7 +197,7 @@ def extract_protein_coding_orfs_from_cdna(input_filepath, output_filepath):
 
 
 @log_calls
-def cluster_transcripts(input_filepath, output_filepath_prefix, overwrite=False):
+def cluster_transcripts_with_mmseqs(input_filepath, output_filepath_prefix, overwrite=False):
     """
     Cluster the transcripts in the input FASTA file using mmseqs2.
     """
@@ -312,8 +300,8 @@ def construct(dataset_metadata_filepath, output_dirpath):
 
     # prepend the species ID to the sequence IDs in all of the coding and noncoding fasta files.
     # (we use the word "labeled" for this)
-    cdna_labeled_dirpath = add_suffix(cdna_dirpath, "labeled")
-    ncrna_labeled_dirpath = add_suffix(ncrna_dirpath, "labeled")
+    cdna_labeled_dirpath = add_suffix_to_path(cdna_dirpath, "labeled")
+    ncrna_labeled_dirpath = add_suffix_to_path(ncrna_dirpath, "labeled")
 
     for filepath in cdna_dirpath.glob("*.fa.gz"):
         prepend_filename_to_sequence_ids(filepath, (cdna_labeled_dirpath / filepath.name))
@@ -330,25 +318,32 @@ def construct(dataset_metadata_filepath, output_dirpath):
     # filter out transcripts from the cdna file that are not truly protein coding.
     # (by definition, this not necessary for the noncoding transcripts)
     all_cdna_coding_filepath = output_dirpath / "all-cdna-coding.fa.gz"
-    extract_protein_coding_orfs_from_cdna(all_cdna_filepath, all_cdna_coding_filepath)
+    extract_protein_coding_transcripts_from_cdna(all_cdna_filepath, all_cdna_coding_filepath)
 
-    # merge the coding and noncoding transcripts into a single file and unzip it.
+    # merge the coding and noncoding transcripts into a single file for clustering.
     merged_cdna_and_ncrna_filepath = output_dirpath / "cdna-and-ncrna.fa.gz"
     cat_files(
         input_filepaths=(all_cdna_coding_filepath, all_ncrna_filepath),
         output_filepath=merged_cdna_and_ncrna_filepath,
     )
-    gunzip_file(merged_cdna_and_ncrna_filepath)
+    merged_cdna_and_ncrna_unzipped_filepath = merged_cdna_and_ncrna_filepath.with_suffix("")
+    gunzip_file(
+        input_filepath=merged_cdna_and_ncrna_filepath,
+        output_filepath=merged_cdna_and_ncrna_unzipped_filepath,
+    )
 
-    # cluster all of the transcripts using mmseqs2 to reduce redundancy.
-    cluster_transcripts(
-        input_filepath=merged_cdna_and_ncrna_filepath.with_suffix(""),
-        output_filepath_prefix=output_dirpath / "mmseqs" / "mmseqs-output",
+    # cluster all of the transcripts to reduce redundancy.
+    mmseqs_output_filepath_prefix = output_dirpath / "mmseqs" / "mmseqs-output"
+    cluster_transcripts_with_mmseqs(
+        input_filepath=merged_cdna_and_ncrna_unzipped_filepath,
+        output_filepath_prefix=mmseqs_output_filepath_prefix,
     )
 
     # this is the name of the file created by mmseqs2 containing representative sequences
     # for each cluster.
-    rep_seqs_filepath = output_dirpath / "mmseqs" / "mmseqs-output_rep_seq.fasta"
+    rep_seqs_filepath = (
+        mmseqs_output_filepath_prefix.parent / f"{mmseqs_output_filepath_prefix.stem}_rep_seq.fasta"
+    )
 
     for kind, filepath in [("cdna", all_cdna_coding_filepath), ("ncrna", all_ncrna_filepath)]:
         clustered_filepath = output_dirpath / f"{kind}-clustered.fa"
@@ -357,7 +352,7 @@ def construct(dataset_metadata_filepath, output_dirpath):
         )
 
         subsample_period = 1
-        subsampled_filepath = add_suffix(clustered_filepath, f"ssx{subsample_period}")
+        subsampled_filepath = add_suffix_to_path(clustered_filepath, f"ssx{subsample_period}")
         subsample_fasta_file(
             input_filepath=clustered_filepath,
             output_filepath=subsampled_filepath,
@@ -384,10 +379,10 @@ def translate_and_embed(dirpaths):
     model_name = "esm2_t6_8M_UR50D"
 
     for dirpath in dirpaths:
-        peptides_dirpath = add_suffix(dirpath, "peptides")
+        peptides_dirpath = add_suffix_to_path(dirpath, "peptides")
         peptides_dirpath.mkdir(parents=True, exist_ok=True)
 
-        embeddings_dirpath = add_suffix(dirpath, f"embeddings--{model_name}")
+        embeddings_dirpath = add_suffix_to_path(dirpath, f"embeddings--{model_name}")
         embeddings_dirpath.mkdir(parents=True, exist_ok=True)
 
         for input_filepath in dirpath.glob("*.fa"):
