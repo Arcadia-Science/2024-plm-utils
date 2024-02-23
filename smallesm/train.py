@@ -108,7 +108,6 @@ def train(
         x_test, y_test = load_embeddings_and_labels(
             coding_test_filepath, noncoding_test_filepath, max_length
         )
-
         x_test_pcs = pca.transform(x_test)
         y_test_pred = model.predict_proba(x_test_pcs)
         test_metrics = calc_metrics(y_test, y_test_pred)
@@ -123,10 +122,12 @@ def calc_metrics(y_true, y_pred_proba):
 
     y_true : array-like of shape (n_samples,)
         The true binary labels.
-    y_pred_proba : array-like of shape (n_samples,)
-        The predicted probabilities for the positive class.
+    y_pred_proba : array-like of shape (n_samples, 2)
+        The predicted probabilities for the negative and positive classes;
+        output by the `predict_proba` method of sklearn classifiers.
     """
-    y_pred = (y_pred_proba > 0.5).astype(bool)
+    y_pred_proba = y_pred_proba[:, 1]
+    y_pred = (y_pred_proba > 0.5).astype(int)
     accuracy = sklearn.metrics.accuracy_score(y_true, y_pred)
     precision = sklearn.metrics.precision_score(y_true, y_pred)
     recall = sklearn.metrics.recall_score(y_true, y_pred)
