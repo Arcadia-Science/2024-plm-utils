@@ -8,16 +8,19 @@ from smallesm.train import train
 
 @click.command()
 @click.option(
-    "--embeddings-dirpath", type=click.Path(exists=True, path_type=pathlib.Path), required=True
+    "--coding-dirpath", type=click.Path(exists=True, path_type=pathlib.Path), required=True
 )
-@click.option("--embeddings-suffix", type=str, required=True)
-def command(embeddings_suffix, embeddings_dirpath):
+@click.option(
+    "--noncoding-dirpath", type=click.Path(exists=True, path_type=pathlib.Path), required=True
+)
+@click.option(
+    "--output-filepath", type=click.Path(exists=False, path_type=pathlib.Path), required=True
+)
+def command(coding_dirpath, noncoding_dirpath, output_filepath):
     """
-    Train and test a model using all pairs of embeddings in the given directory.
+    Train and test a model using all pairs of embeddings in the given directories
+    of embeddings of coding and noncoding sequences.
     """
-
-    coding_dirpath = embeddings_dirpath / f"cdna-coding-{embeddings_suffix}"
-    noncoding_dirpath = embeddings_dirpath / f"ncrna-{embeddings_suffix}"
 
     coding_filenames = sorted([path.stem for path in coding_dirpath.glob("*.npy")])
     noncoding_filenames = sorted([path.stem for path in noncoding_dirpath.glob("*.npy")])
@@ -41,6 +44,5 @@ def command(embeddings_suffix, embeddings_dirpath):
 
     results = pd.DataFrame(results)
     timestamp = pd.Timestamp.now().strftime("%Y-%m-%d")
-    results.to_csv(
-        embeddings_dirpath / f"{timestamp}-smallesm-results-{embeddings_suffix}.csv", index=False
-    )
+    results.to_csv(output_filepath.parent / f"{timestamp}-{output_filepath.name}", index=False)
+    print(f"Saved results to '{output_filepath}'")

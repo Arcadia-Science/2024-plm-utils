@@ -8,15 +8,17 @@ channels:
 dependencies:
   - biopython=1.83
   - click=8.1.7
+  - mmseqs2=15.6f452
+  - pandas=2.2.0
   - pip=23.2.1
   - pre-commit=3.5.0
   - python~=3.11.0
+  - pytorch::pytorch=2.2.0
+  - pytorch::pytorch-cuda=12.1
   - ruff=0.2.1
   - requests=2.31.0
   - scikit-learn=1.4.0
-  - pandas=2.2.0
-  - pytorch::pytorch=2.2.0
-  - pytorch::pytorch-cuda=12.1
+  - seqkit=2.7.0
 
   - pip:
     - orfipy==0.0.4
