@@ -1,0 +1,15 @@
+>tS(UGA)I_tRNA ncrna chromosome:R64-1-1:IX:248850:248931:1 gene:tS(UGA)I gene_biotype:tRNA transcript_biotype:tRNA gene_symbol:SUP17 description:Serine tRNA (tRNA-Ser), predicted by tRNAscan-SE analysis; can mutate to suppress ochre nonsense mutations [Source:SGD;Acc:S000006735]
+GGCACTATGGCCGAGTGGTTAAGGCGACAGACTTGAAATCTGTTGGGCTCTGCCCGCGCT
+GGTTCAAATCCTGCTGGTGTCG
+>tK(UUU)P_tRNA ncrna chromosome:R64-1-1:XVI:769207:769302:-1 gene:tK(UUU)P gene_biotype:tRNA transcript_biotype:tRNA description:Lysine tRNA (tRNA-Lys), predicted by tRNAscan-SE analysis; thiolation of uridine at wobble position (34) requires Ncs6p [Source:SGD;Acc:S000006635]
+TCCTTGTTAGCTCAGTTGGTAGAGCGTTCGGCTTTTAACCGAAATGTCAGGGGTTCGAGC
+CCCCTATGAGGAG
+>tK(CUU)I_tRNA ncrna chromosome:R64-1-1:IX:300228:300300:-1 gene:tK(CUU)I gene_biotype:tRNA transcript_biotype:tRNA description:Lysine tRNA (tRNA-Lys), predicted by tRNAscan-SE analysis; a small portion is imported into mitochondria via interaction with mt lysyl-tRNA synthetase Msk1p and is necessary to decode AAG codons at high temperature, when base modification of mt-encoded tRNA-Lys is reduced [Source:SGD;Acc:S000006624]
+GCCTTGTTGGCGCAATCGGTAGCGCGTATGACTCTTAATCATAAGGTTAGGGGTTCGAGC
+CCCCTACAGGGCT
+>snR40_snoRNA ncrna chromosome:R64-1-1:XIV:89210:89306:1 gene:snR40 gene_biotype:snoRNA transcript_biotype:snoRNA description:C/D box small nucleolar RNA (snoRNA); guides 2'-O-methylation of large subunit (LSU) rRNA at position U898 and small subunit (SSU) rRNA at position G1271 [Source:SGD;Acc:S000007304]
+GTAAATGACGAGAAAAAAGCTGTGCACCAGTCTGAACATGGATGCCACAAGTACTCAGGT
+GTCCTATGAAGCATTAAGTATACCCAAATTTCTGATC
+>snR47_snoRNA ncrna chromosome:R64-1-1:IV:541602:541700:-1 gene:snR47 gene_biotype:snoRNA transcript_biotype:snoRNA description:C/D box small nucleolar RNA (snoRNA); guides 2'-O-methylation of large subunit (LSU) rRNA at position A2220 and small subunit (SSU) rRNA at position A619 [Source:SGD;Acc:S000006507]
+ATATATGATGATATCCTATAACAACAACAACATGAATTTCTTCGTCCGAATCCTTTATAG
+GTGGAAACAAACTTTGACAATAGCTTTTTAACACTGATA
