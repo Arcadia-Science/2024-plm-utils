@@ -288,7 +288,13 @@ def download(dataset_metadata_filepath, output_dirpath, overwrite):
 @cli.command()
 @click.argument("dataset_metadata_filepath", type=click.Path(exists=True, path_type=pathlib.Path))
 @click.argument("output_dirpath", type=click.Path(path_type=pathlib.Path))
-def construct(dataset_metadata_filepath, output_dirpath):
+@click.option(
+    "--subsample-factor",
+    type=int,
+    default=3,
+    help="Factor by which to subsample the sequences in each dataset",
+)
+def construct(dataset_metadata_filepath, output_dirpath, subsample_factor):
     """
     Construct the training datasets from the downloaded transcriptomes.
 
@@ -360,12 +366,11 @@ def construct(dataset_metadata_filepath, output_dirpath):
         )
 
         # subsample the clustered files to reduce the number of sequences and make training faster.
-        subsample_period = 3
-        subsampled_filepath = add_suffix_to_path(clustered_filepath, f"ssx{subsample_period}")
+        subsampled_filepath = add_suffix_to_path(clustered_filepath, f"ssx{subsample_factor}")
         subsample_fasta_file(
             input_filepath=clustered_filepath,
             output_filepath=subsampled_filepath,
-            subsample_rate=(1 / subsample_period),
+            subsample_rate=(1 / subsample_factor),
         )
 
         # split the subsampled files into separate files for each species using the prefixes

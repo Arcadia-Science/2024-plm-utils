@@ -95,35 +95,58 @@ def train(
 
     model.fit(x_train, y_train)
 
-    y_train_pred = model.predict(x_train)
+    y_train_pred = model.predict_proba(x_train)
     train_metrics = calc_metrics(y_train, y_train_pred)
     pretty_print_metrics(train_metrics, header="Training metrics")
 
-    y_validation_pred = model.predict(x_validation)
+    y_validation_pred = model.predict_proba(x_validation)
     validation_metrics = calc_metrics(y_validation, y_validation_pred)
     pretty_print_metrics(validation_metrics, header="Validation metrics")
 
+    test_metrics = {}
     if coding_test_filepath is not None and noncoding_test_filepath is not None:
         x_test, y_test = load_embeddings_and_labels(
             coding_test_filepath, noncoding_test_filepath, max_length
         )
 
         x_test_pcs = pca.transform(x_test)
-        y_test_pred = model.predict(x_test_pcs)
+        y_test_pred = model.predict_proba(x_test_pcs)
         test_metrics = calc_metrics(y_test, y_test_pred)
         pretty_print_metrics(test_metrics, header="Test metrics")
 
+    return test_metrics
 
-def calc_metrics(y_true, y_pred):
+
+def calc_metrics(y_true, y_pred_proba):
     """
     Calculate performance metrics for the given true and predicted labels.
+
+    y_true : array-like of shape (n_samples,)
+        The true binary labels.
+    y_pred_proba : array-like of shape (n_samples,)
+        The predicted probabilities for the positive class.
     """
+    y_pred = (y_pred_proba > 0.5).astype(bool)
     accuracy = sklearn.metrics.accuracy_score(y_true, y_pred)
     precision = sklearn.metrics.precision_score(y_true, y_pred)
     recall = sklearn.metrics.recall_score(y_true, y_pred)
+    mcc = sklearn.metrics.matthews_corrcoef(y_true, y_pred)
     f1 = sklearn.metrics.f1_score(y_true, y_pred)
 
-    return {"accuracy": accuracy, "precision": precision, "recall": recall, "f1": f1}
+    # `roc_auc_score` raises a ValueError if only one class is present in `y_true`.
+    try:
+        auc_roc = sklearn.metrics.roc_auc_score(y_true, y_pred_proba)
+    except ValueError:
+        auc_roc = np.nan
+
+    return {
+        "accuracy": accuracy,
+        "precision": precision,
+        "recall": recall,
+        "mcc": mcc,
+        "f1": f1,
+        "auc_roc": auc_roc,
+    }
 
 
 def pretty_print_metrics(metrics, header=None):
