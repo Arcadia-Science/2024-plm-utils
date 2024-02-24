@@ -122,7 +122,7 @@ def command(dirpath, dirname_suffix):
     """
     Train and test an RNASamba model using all pairs of transcript dataset in the given directory.
     """
-    timestamp = pd.Timestamp.now().strftime("%Y-%m-%d")
+    timestamp = "2024-02-23"  # pd.Timestamp.now().strftime("%Y-%m-%d")
 
     models_dirpath = dirpath / f"{timestamp}-rnasamba-models-{dirname_suffix}"
     models_dirpath.mkdir(exist_ok=True)
