@@ -299,8 +299,12 @@ def construct(dataset_metadata_filepath, output_dirpath, subsample_factor):
     """
     Construct the training datasets from the downloaded transcriptomes.
 
-    Assumes that the coding and non-coding transcriptomes have been downloaded
+    This command assumes that the coding and non-coding transcriptomes have been downloaded
     to the output_dirpath directory using the `download` command.
+
+    Note: the de facto pipeline that this command implements
+    is based on the snakemake pipeline defined in the `arcadia-science/peptigate` repo
+    to construct a training dataset for RNASamba models.
 
     TODO: there is currently no overwrite option; the user must manually delete
     output directories or files in order to re-run certain steps of this de facto pipeline.
