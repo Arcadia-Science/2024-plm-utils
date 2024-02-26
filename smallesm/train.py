@@ -23,8 +23,8 @@ def load_and_filter_embeddings(embeddings_filepath, max_length=None):
         return embeddings
 
     # TODO: a less hackish way to get the peptides fasta file corresponding to the embeddings.
-    peptides_fasta_filepath = embeddings_filepath.with_name(
-        embeddings_filepath.stem.replace("embeddings", "peptides.fa")
+    peptides_fasta_filepath = (
+        embeddings_filepath.parent.parent.parent / "peptides" / f"{embeddings_filepath.stem}.fa"
     )
 
     filtered_inds = [

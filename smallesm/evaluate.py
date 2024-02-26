@@ -16,7 +16,10 @@ from smallesm.train import train
 @click.option(
     "--output-filepath", type=click.Path(exists=False, path_type=pathlib.Path), required=True
 )
-def command(coding_dirpath, noncoding_dirpath, output_filepath):
+@click.option(
+    "--max-length", type=int, required=False, help="Maximum length of the peptides to use"
+)
+def command(coding_dirpath, noncoding_dirpath, output_filepath, max_length):
     """
     Train and test a model using all pairs of embeddings in the given directories
     of embeddings of coding and noncoding sequences.
@@ -37,6 +40,7 @@ def command(coding_dirpath, noncoding_dirpath, output_filepath):
                 noncoding_train_filepath=noncoding_dirpath / f"{filename_train}.npy",
                 coding_test_filepath=coding_dirpath / f"{filename_test}.npy",
                 noncoding_test_filepath=noncoding_dirpath / f"{filename_test}.npy",
+                max_length=max_length,
             )
             results.append(
                 dict(filename_train=filename_train, filename_test=filename_test, **test_metrics)
