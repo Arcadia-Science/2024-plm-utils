@@ -22,7 +22,9 @@ def load_and_filter_embeddings(embeddings_filepath, max_length=None):
     if max_length is None:
         return embeddings
 
-    # TODO: a less hackish way to get the peptides fasta file corresponding to the embeddings.
+    # TODO: this path to the peptides fasta file corresponding to the given embeddings file
+    # is hard-coded according to the directory structure created by `smallesm datasets construct`.
+    # This is brittle and should be made more generic.
     peptides_fasta_filepath = (
         embeddings_filepath.parent.parent.parent / "peptides" / f"{embeddings_filepath.stem}.fa"
     )
