@@ -177,13 +177,14 @@ def prepend_filename_to_sequence_ids(input_filepath, output_filepath):
     """
     sep = "."
     prefix = input_filepath.stem.split(".")[0].upper()
-    subprocess.run(
-        (
-            f"seqkit replace --pattern ^ --replacement {prefix}{sep} "
-            f"-o {output_filepath} {input_filepath}",
-        ),
-        shell=True,
-    )
+    command = f"""
+        seqkit replace \
+            --pattern ^ \
+            --replacement {prefix}{sep} \
+            -o {output_filepath} \
+            {input_filepath}
+    """
+    subprocess.run(command, shell=True)
 
 
 @log_calls
@@ -194,10 +195,14 @@ def extract_protein_coding_transcripts_from_cdna(input_filepath, output_filepath
     This is necessary because ensembl cDNA files include transcripts for pseudogenes
     and other non-coding RNAs.
     """
-    command = (
-        'seqkit grep --use-regexp --by-name --pattern "transcript_biotype:protein_coding" '
-        f"-o {output_filepath} {input_filepath}"
-    )
+    command = f"""
+        seqkit grep \
+            --use-regexp \
+            --by-name \
+            --pattern "transcript_biotype:protein_coding" \
+            -o {output_filepath} \
+            {input_filepath}
+    """
     subprocess.run(command, shell=True)
 
 
@@ -221,10 +226,15 @@ def cluster_with_mmseqs(input_filepath, output_filepath_prefix, overwrite=False)
     output_filepath_prefix.parent.mkdir(parents=True, exist_ok=True)
 
     mmseqs_internal_dir = output_filepath_prefix.parent / "mmseqs-internal"
-    command = (
-        f"mmseqs easy-cluster {input_filepath} {output_filepath_prefix} "
-        f"{mmseqs_internal_dir} --min-seq-id 0.8 --cov-mode 1 --cluster-mode 2"
-    )
+    command = f"""
+        mmseqs easy-cluster \
+        {input_filepath} \
+        {output_filepath_prefix} \
+        {mmseqs_internal_dir} \
+        --min-seq-id 0.8 \
+        --cov-mode 1 \
+        --cluster-mode 2
+    """
     print(f"Running mmseqs:\n{command}")
     subprocess.run(command, shell=True)
     shutil.rmtree(mmseqs_internal_dir)
