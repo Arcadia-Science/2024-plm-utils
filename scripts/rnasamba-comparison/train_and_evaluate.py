@@ -1,13 +1,12 @@
 import os
 import pathlib
-from collections import namedtuple
+import subprocess
 
 import click
 import numpy as np
 import pandas as pd
 import sklearn
 import sklearn.metrics
-from rnasamba import cli as rnasamba_cli
 
 
 def calc_metrics(y_true, y_pred_proba):
@@ -48,30 +47,21 @@ def train(coding_train_filepath, noncoding_train_filepath, model_filepath, max_l
 
     TODO: implement filtering with the `max_length` parameter.
     """
-    Args = namedtuple(
-        "Args",
+    subprocess.run(
         [
-            "coding_file",
-            "noncoding_file",
-            "output_file",
-            "early_stopping",
-            "batch_size",
-            "epochs",
-            "verbose",
-        ],
+            "rnasamba",
+            "train",
+            # the number of epochs after the lowest validation loss before stopping;
+            # we use 1 to stop training quickly, as soon as the validation loss starts increasing.
+            "--early_stopping",
+            "1",
+            "--verbose",
+            "2",
+            model_filepath,
+            coding_train_filepath,
+            noncoding_train_filepath,
+        ]
     )
-    args = Args(
-        coding_file=coding_train_filepath,
-        noncoding_file=noncoding_train_filepath,
-        output_file=model_filepath,
-        # the number of epochs after the lowest validation loss before stopping.
-        early_stopping=1,
-        # 128 is the default batch size in the RNSamba code.
-        batch_size=128,
-        epochs=20,
-        verbose=2,
-    )
-    rnasamba_cli.train(args)
 
 
 def evaluate(coding_test_filepath, noncoding_test_filepath, model_filepath, predictions_filepath):
@@ -84,23 +74,22 @@ def evaluate(coding_test_filepath, noncoding_test_filepath, model_filepath, pred
         "noncoding": noncoding_test_filepath,
     }
 
-    # temporary filepaths for the per-class predictions
+    # temporary filepaths for the per-class predictions.
     prediction_filepaths = {
         "coding": "tmp-coding-predictions.tsv",
         "noncoding": "tmp-noncoding-predictions.tsv",
     }
 
-    # mock the argparse args object that is expected by `rnasamba.cli.classify`
-    Args = namedtuple("Args", ["fasta_file", "weights", "output_file", "verbose", "protein_fasta"])
     for kind in test_filepaths.keys():
-        args = Args(
-            weights=[model_filepath],
-            fasta_file=test_filepaths[kind],
-            output_file=prediction_filepaths[kind],
-            protein_fasta=None,
-            verbose=0,
+        subprocess.run(
+            [
+                "rnasamba",
+                "classify",
+                prediction_filepaths[kind],
+                test_filepaths[kind],
+                model_filepath,
+            ]
         )
-        rnasamba_cli.classify(args)
 
     coding_predictions = pd.read_csv(prediction_filepaths["coding"], sep="\t")
     noncoding_predictions = pd.read_csv(prediction_filepaths["noncoding"], sep="\t")
