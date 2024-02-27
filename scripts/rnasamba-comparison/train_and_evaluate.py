@@ -105,19 +105,24 @@ def evaluate(coding_test_filepath, noncoding_test_filepath, model_filepath, pred
 
 
 @click.command()
-@click.option("--dirpath", type=click.Path(exists=True, path_type=pathlib.Path), required=True)
-@click.option("--dirname-suffix", type=str, required=True)
-def command(dirpath, dirname_suffix):
+@click.option(
+    "--coding-dirpath", type=click.Path(exists=True, path_type=pathlib.Path), required=True
+)
+@click.option(
+    "--noncoding-dirpath", type=click.Path(exists=True, path_type=pathlib.Path), required=True
+)
+@click.option(
+    "--output-dirpath", type=click.Path(exists=False, path_type=pathlib.Path), required=True
+)
+@click.option(
+    "--max-length", type=int, required=False, help="Maximum length of the peptides to use"
+)
+def command(coding_dirpath, noncoding_dirpath, output_dirpath, max_length):
     """
     Train and test an RNASamba model using all pairs of transcript dataset in the given directory.
     """
-    timestamp = "2024-02-23"  # pd.Timestamp.now().strftime("%Y-%m-%d")
-
-    models_dirpath = dirpath / f"{timestamp}-rnasamba-models-{dirname_suffix}"
+    models_dirpath = output_dirpath / "models"
     models_dirpath.mkdir(exist_ok=True)
-
-    coding_dirpath = dirpath / f"cdna-coding-{dirname_suffix}"
-    noncoding_dirpath = dirpath / f"ncrna-{dirname_suffix}"
 
     coding_filenames = sorted([path.stem for path in coding_dirpath.glob("*.fa")])
     noncoding_filenames = sorted([path.stem for path in noncoding_dirpath.glob("*.fa")])
@@ -126,24 +131,24 @@ def command(dirpath, dirname_suffix):
     assert set(coding_filenames) == set(noncoding_filenames)
 
     filenames = coding_filenames[:]
-    for filename_train in filenames:
-        model_filepath = models_dirpath / f"trained-on-{filename_train}.hdf5"
+    for train_filename in filenames:
+        model_filepath = models_dirpath / f"trained-on-{train_filename}.hdf5"
 
         if model_filepath.exists():
             print(f"Model '{model_filepath}' already exists; skipping training.")
         else:
-            print(f"Training on '{filename_train}'")
+            print(f"Training on '{train_filename}'")
             train(
-                coding_train_filepath=coding_dirpath / f"{filename_train}.fa",
-                noncoding_train_filepath=noncoding_dirpath / f"{filename_train}.fa",
+                coding_train_filepath=coding_dirpath / f"{train_filename}.fa",
+                noncoding_train_filepath=noncoding_dirpath / f"{train_filename}.fa",
                 model_filepath=model_filepath,
             )
 
-        for filename_test in filenames:
-            print(f"Testing on '{filename_test}'")
+        for test_filename in filenames:
+            print(f"Testing on '{test_filename}'")
 
             predictions_filepath = (
-                models_dirpath / model_filepath.stem / f"{filename_test}-preds.tsv"
+                models_dirpath / model_filepath.stem / f"{test_filename}-preds.tsv"
             )
             predictions_filepath.parent.mkdir(exist_ok=True, parents=True)
             if predictions_filepath.exists():
@@ -151,8 +156,8 @@ def command(dirpath, dirname_suffix):
                 continue
 
             evaluate(
-                coding_test_filepath=coding_dirpath / f"{filename_test}.fa",
-                noncoding_test_filepath=noncoding_dirpath / f"{filename_test}.fa",
+                coding_test_filepath=coding_dirpath / f"{test_filename}.fa",
+                noncoding_test_filepath=noncoding_dirpath / f"{test_filename}.fa",
                 model_filepath=model_filepath,
                 predictions_filepath=predictions_filepath,
             )
