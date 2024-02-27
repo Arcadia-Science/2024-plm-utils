@@ -105,7 +105,13 @@ def evaluate(coding_test_filepath, noncoding_test_filepath, model_filepath, pred
 )
 def command(coding_dirpath, noncoding_dirpath, output_dirpath, max_length):
     """
-    Train and test an RNASamba model using all pairs of transcript dataset in the given directory.
+    Train an RNASamba model on each dataset in the given directories,
+    then generate predictions for each dataset using each model to generate
+    a complete matrix of train-test results for all pairs of datasets.
+
+    Each 'dataset' consists of a pair of fasta files, each having the same name,
+    one in the `coding_dirpath` directory containing coding sequences,
+    and one in `noncoding_dirpath` containing noncoding sequences.
     """
     output_dirpath.mkdir(exist_ok=True, parents=True)
 
