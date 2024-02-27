@@ -20,6 +20,16 @@ def filter_transcripts_by_length(input_filepath, output_filepath, max_length):
                 SeqIO.write(record, file_out, "fasta")
 
 
+def deleted_filtered_files(dirpaths):
+    """
+    Delete all files in the given directories that have the suffix '-filtered'
+    (these are presumed to be files created by `filter_transcripts_by_length`).
+    """
+    for dirpath in dirpaths:
+        for filepath in dirpath.glob("*-filtered.fa"):
+            os.remove(filepath)
+
+
 def calc_metrics(y_true, y_pred_proba):
     """
     Calculate performance metrics for the given true and predicted labels.
@@ -132,8 +142,10 @@ def command(coding_dirpath, noncoding_dirpath, output_dirpath, max_length):
     """
     Train and test an RNASamba model using all pairs of transcript dataset in the given directory.
     """
-    models_dirpath = output_dirpath / "models"
-    models_dirpath.mkdir(exist_ok=True)
+    output_dirpath.mkdir(exist_ok=True, parents=True)
+
+    # delete any filtered files that may have been created in a previous call to this function.
+    deleted_filtered_files([coding_dirpath, noncoding_dirpath])
 
     coding_filenames = sorted([path.stem for path in coding_dirpath.glob("*.fa")])
     noncoding_filenames = sorted([path.stem for path in noncoding_dirpath.glob("*.fa")])
@@ -160,7 +172,7 @@ def command(coding_dirpath, noncoding_dirpath, output_dirpath, max_length):
     filenames = coding_filenames
 
     for train_filename in filenames:
-        model_filepath = models_dirpath / f"trained-on-{train_filename}.hdf5"
+        model_filepath = output_dirpath / f"trained-on-{train_filename}.hdf5"
 
         if model_filepath.exists():
             print(f"Model '{model_filepath}' already exists; skipping training.")
@@ -176,7 +188,7 @@ def command(coding_dirpath, noncoding_dirpath, output_dirpath, max_length):
             print(f"Testing on '{test_filename}'")
 
             predictions_filepath = (
-                models_dirpath / model_filepath.stem / f"{test_filename}-preds.tsv"
+                output_dirpath / model_filepath.stem / f"{test_filename}-preds.tsv"
             )
             predictions_filepath.parent.mkdir(exist_ok=True, parents=True)
             if predictions_filepath.exists():
@@ -190,11 +202,7 @@ def command(coding_dirpath, noncoding_dirpath, output_dirpath, max_length):
                 predictions_filepath=predictions_filepath,
             )
 
-    # cleanup by deleting any filtered fasta files that were created.
-    for filepath in coding_dirpath.glob("*filtered.fa"):
-        os.remove(filepath)
-    for filepath in noncoding_dirpath.glob("*filtered.fa"):
-        os.remove(filepath)
+    deleted_filtered_files([coding_dirpath, noncoding_dirpath])
 
 
 if __name__ == "__main__":
