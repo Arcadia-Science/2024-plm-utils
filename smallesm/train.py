@@ -130,11 +130,6 @@ def calc_metrics(y_true, y_pred_proba):
     """
     y_pred_proba = y_pred_proba[:, 1]
     y_pred = (y_pred_proba > 0.5).astype(int)
-    accuracy = sklearn.metrics.accuracy_score(y_true, y_pred)
-    precision = sklearn.metrics.precision_score(y_true, y_pred)
-    recall = sklearn.metrics.recall_score(y_true, y_pred)
-    mcc = sklearn.metrics.matthews_corrcoef(y_true, y_pred)
-    f1 = sklearn.metrics.f1_score(y_true, y_pred)
 
     # `roc_auc_score` raises a ValueError if only one class is present in `y_true`.
     try:
@@ -143,12 +138,17 @@ def calc_metrics(y_true, y_pred_proba):
         auc_roc = np.nan
 
     return {
-        "accuracy": accuracy,
-        "precision": precision,
-        "recall": recall,
-        "mcc": mcc,
-        "f1": f1,
         "auc_roc": auc_roc,
+        "accuracy": sklearn.metrics.accuracy_score(y_true, y_pred),
+        "precision": sklearn.metrics.precision_score(y_true, y_pred),
+        "recall": sklearn.metrics.recall_score(y_true, y_pred),
+        "mcc": sklearn.metrics.matthews_corrcoef(y_true, y_pred),
+        "num_true_positive": ((y_true == 1) & (y_pred == 1)).sum(),
+        "num_false_positive": ((y_true == 0) & (y_pred == 1)).sum(),
+        "num_true_negative": ((y_true == 0) & (y_pred == 0)).sum(),
+        "num_false_negative": ((y_true == 1) & (y_pred == 0)).sum(),
+        "num_coding": y_true.sum(),
+        "num_noncoding": (y_true == 0).sum(),
     }
 
 
