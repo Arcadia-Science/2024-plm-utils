@@ -3,10 +3,7 @@ import pathlib
 import subprocess
 
 import click
-import numpy as np
 import pandas as pd
-import sklearn
-import sklearn.metrics
 from Bio import SeqIO
 
 
@@ -28,38 +25,6 @@ def deleted_filtered_files(dirpaths):
     for dirpath in dirpaths:
         for filepath in dirpath.glob("*-filtered.fa"):
             os.remove(filepath)
-
-
-def calc_metrics(y_true, y_pred_proba):
-    """
-    Calculate performance metrics for the given true and predicted labels.
-
-    NOTE: this function is copied from the `smallesm` package.
-    It cannot be imported from that package because we cannot assume the package
-    is installed in the rnasamba env.
-    """
-    y_pred = (y_pred_proba > 0.5).astype(bool)
-    accuracy = sklearn.metrics.accuracy_score(y_true, y_pred)
-    precision = sklearn.metrics.precision_score(y_true, y_pred)
-    recall = sklearn.metrics.recall_score(y_true, y_pred)
-    mcc = sklearn.metrics.matthews_corrcoef(y_true, y_pred)
-    f1 = sklearn.metrics.f1_score(y_true, y_pred)
-
-    # `roc_auc_score` raises a ValueError if only one class is present in `y_true`.
-    try:
-        auc_roc = sklearn.metrics.roc_auc_score(y_true, y_pred_proba)
-    except ValueError as e:
-        print("ValueError in `roc_auc_score`", e)
-        auc_roc = np.nan
-
-    return {
-        "accuracy": accuracy,
-        "precision": precision,
-        "recall": recall,
-        "mcc": mcc,
-        "f1": f1,
-        "auc_roc": auc_roc,
-    }
 
 
 def train(coding_train_filepath, noncoding_train_filepath, model_filepath):
@@ -151,18 +116,16 @@ def command(coding_dirpath, noncoding_dirpath, output_dirpath, max_length):
     noncoding_filenames = sorted([path.stem for path in noncoding_dirpath.glob("*.fa")])
 
     if max_length is not None:
-        for filename in coding_filenames:
-            filter_transcripts_by_length(
-                input_filepath=coding_dirpath / f"{filename}.fa",
-                output_filepath=coding_dirpath / f"{filename}-filtered.fa",
-                max_length=max_length,
-            )
-        for filename in noncoding_filenames:
-            filter_transcripts_by_length(
-                input_filepath=noncoding_dirpath / f"{filename}.fa",
-                output_filepath=noncoding_dirpath / f"{filename}-filtered.fa",
-                max_length=max_length,
-            )
+        for dirpath, filenames in [
+            (coding_dirpath, coding_filenames),
+            (noncoding_dirpath, noncoding_filenames),
+        ]:
+            for filename in filenames:
+                filter_transcripts_by_length(
+                    input_filepath=dirpath / f"{filename}.fa",
+                    output_filepath=dirpath / f"{filename}-filtered.fa",
+                    max_length=max_length,
+                )
 
         coding_filenames = [f"{filename}-filtered" for filename in coding_filenames]
         noncoding_filenames = [f"{filename}-filtered" for filename in noncoding_filenames]
