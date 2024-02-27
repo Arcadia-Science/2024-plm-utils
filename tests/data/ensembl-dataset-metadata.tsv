@@ -1,0 +1,4 @@
+species_id	species_common_name	root_url	genome_name	cdna_endpoint	ncrna_endpoint	genome_abbreviation
+hsap	human	https://ftp.ensembl.org/pub/release-111/fasta/homo_sapiens/	Homo_sapiens.GRCh38	cdna/Homo_sapiens.GRCh38.cdna.all.fa.gz	ncrna/Homo_sapiens.GRCh38.ncrna.fa.gz	GRCh38
+scer	yeast	https://ftp.ensemblgenomes.ebi.ac.uk/pub/fungi/release-58/fasta/saccharomyces_cerevisiae/	Saccharomyces_cerevisiae.R64-1-1	cdna/Saccharomyces_cerevisiae.R64-1-1.cdna.all.fa.gz	ncrna/Saccharomyces_cerevisiae.R64-1-1.ncrna.fa.gz	R64-1-1
+cele	worm	https://ftp.ensemblgenomes.ebi.ac.uk/pub/metazoa/release-58/fasta/caenorhabditis_elegans/	Caenorhabditis_elegans.WBcel235	cdna/Caenorhabditis_elegans.WBcel235.cdna.all.fa.gz	ncrna/Caenorhabditis_elegans.WBcel235.ncrna.fa.gz	WBcel235

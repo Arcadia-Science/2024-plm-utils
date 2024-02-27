@@ -1,6 +1,7 @@
+/tests/data/processed
 /notebooks/
-tmp/
 
+/tmp
 /tmp*
 
 /.ruff_cache/
