@@ -7,6 +7,17 @@ import numpy as np
 import pandas as pd
 import sklearn
 import sklearn.metrics
+from Bio import SeqIO
+
+
+def filter_transcripts_by_length(input_filepath, output_filepath, max_length):
+    """
+    filter the given fasta file to remove any sequences that are longer than the max_length.
+    """
+    with open(output_filepath, "w") as file_out:
+        for record in SeqIO.parse(input_filepath, "fasta"):
+            if len(record.seq) <= max_length:
+                SeqIO.write(record, file_out, "fasta")
 
 
 def calc_metrics(y_true, y_pred_proba):
@@ -41,11 +52,12 @@ def calc_metrics(y_true, y_pred_proba):
     }
 
 
-def train(coding_train_filepath, noncoding_train_filepath, model_filepath, max_length=None):
+def train(coding_train_filepath, noncoding_train_filepath, model_filepath):
     """
-    Train an RNSamba model.
+    Train an RNASamba model.
 
-    TODO: implement filtering with the `max_length` parameter.
+    Note: we call RNASamba using the command-line interface because there appears to be
+    a memory leak when calling the RNASamba API from Python.
     """
     subprocess.run(
         [
@@ -68,7 +80,6 @@ def evaluate(coding_test_filepath, noncoding_test_filepath, model_filepath, pred
     """
     Evaluate an RNSamba model.
     """
-
     test_filepaths = {
         "coding": coding_test_filepath,
         "noncoding": noncoding_test_filepath,
@@ -127,10 +138,27 @@ def command(coding_dirpath, noncoding_dirpath, output_dirpath, max_length):
     coding_filenames = sorted([path.stem for path in coding_dirpath.glob("*.fa")])
     noncoding_filenames = sorted([path.stem for path in noncoding_dirpath.glob("*.fa")])
 
+    if max_length is not None:
+        for filename in coding_filenames:
+            filter_transcripts_by_length(
+                input_filepath=coding_dirpath / f"{filename}.fa",
+                output_filepath=coding_dirpath / f"{filename}-filtered.fa",
+                max_length=max_length,
+            )
+        for filename in noncoding_filenames:
+            filter_transcripts_by_length(
+                input_filepath=noncoding_dirpath / f"{filename}.fa",
+                output_filepath=noncoding_dirpath / f"{filename}-filtered.fa",
+                max_length=max_length,
+            )
+
+        coding_filenames = [f"{filename}-filtered" for filename in coding_filenames]
+        noncoding_filenames = [f"{filename}-filtered" for filename in noncoding_filenames]
+
     # sanity-check that the same files are present in both directories.
     assert set(coding_filenames) == set(noncoding_filenames)
+    filenames = coding_filenames
 
-    filenames = coding_filenames[:]
     for train_filename in filenames:
         model_filepath = models_dirpath / f"trained-on-{train_filename}.hdf5"
 
@@ -161,6 +189,12 @@ def command(coding_dirpath, noncoding_dirpath, output_dirpath, max_length):
                 model_filepath=model_filepath,
                 predictions_filepath=predictions_filepath,
             )
+
+    # cleanup by deleting any filtered fasta files that were created.
+    for filepath in coding_dirpath.glob("*filtered.fa"):
+        os.remove(filepath)
+    for filepath in noncoding_dirpath.glob("*filtered.fa"):
+        os.remove(filepath)
 
 
 if __name__ == "__main__":
