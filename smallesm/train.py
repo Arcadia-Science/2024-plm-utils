@@ -22,9 +22,11 @@ def load_and_filter_embeddings(embeddings_filepath, max_length=None):
     if max_length is None:
         return embeddings
 
-    # TODO: a less hackish way to get the peptides fasta file corresponding to the embeddings.
-    peptides_fasta_filepath = embeddings_filepath.with_name(
-        embeddings_filepath.stem.replace("embeddings", "peptides.fa")
+    # TODO: this path to the peptides fasta file corresponding to the given embeddings file
+    # is hard-coded according to the directory structure created by `smallesm datasets construct`.
+    # This is brittle and should be made more generic.
+    peptides_fasta_filepath = (
+        embeddings_filepath.parent.parent.parent / "peptides" / f"{embeddings_filepath.stem}.fa"
     )
 
     filtered_inds = [
@@ -95,35 +97,59 @@ def train(
 
     model.fit(x_train, y_train)
 
-    y_train_pred = model.predict(x_train)
+    y_train_pred = model.predict_proba(x_train)
     train_metrics = calc_metrics(y_train, y_train_pred)
     pretty_print_metrics(train_metrics, header="Training metrics")
 
-    y_validation_pred = model.predict(x_validation)
+    y_validation_pred = model.predict_proba(x_validation)
     validation_metrics = calc_metrics(y_validation, y_validation_pred)
     pretty_print_metrics(validation_metrics, header="Validation metrics")
 
+    test_metrics = {}
     if coding_test_filepath is not None and noncoding_test_filepath is not None:
         x_test, y_test = load_embeddings_and_labels(
             coding_test_filepath, noncoding_test_filepath, max_length
         )
-
         x_test_pcs = pca.transform(x_test)
-        y_test_pred = model.predict(x_test_pcs)
+        y_test_pred = model.predict_proba(x_test_pcs)
         test_metrics = calc_metrics(y_test, y_test_pred)
         pretty_print_metrics(test_metrics, header="Test metrics")
 
+    return test_metrics
 
-def calc_metrics(y_true, y_pred):
+
+def calc_metrics(y_true, y_pred_proba):
     """
     Calculate performance metrics for the given true and predicted labels.
+
+    y_true : array-like of shape (n_samples,)
+        The true binary labels.
+    y_pred_proba : array-like of shape (n_samples, 2)
+        The predicted probabilities for the negative and positive classes;
+        output by the `predict_proba` method of sklearn classifiers.
     """
+    y_pred_proba = y_pred_proba[:, 1]
+    y_pred = (y_pred_proba > 0.5).astype(int)
     accuracy = sklearn.metrics.accuracy_score(y_true, y_pred)
     precision = sklearn.metrics.precision_score(y_true, y_pred)
     recall = sklearn.metrics.recall_score(y_true, y_pred)
+    mcc = sklearn.metrics.matthews_corrcoef(y_true, y_pred)
     f1 = sklearn.metrics.f1_score(y_true, y_pred)
 
-    return {"accuracy": accuracy, "precision": precision, "recall": recall, "f1": f1}
+    # `roc_auc_score` raises a ValueError if only one class is present in `y_true`.
+    try:
+        auc_roc = sklearn.metrics.roc_auc_score(y_true, y_pred_proba)
+    except ValueError:
+        auc_roc = np.nan
+
+    return {
+        "accuracy": accuracy,
+        "precision": precision,
+        "recall": recall,
+        "mcc": mcc,
+        "f1": f1,
+        "auc_roc": auc_roc,
+    }
 
 
 def pretty_print_metrics(metrics, header=None):
