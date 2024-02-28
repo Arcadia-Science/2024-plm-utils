@@ -7,7 +7,54 @@ import pandas as pd
 from Bio import SeqIO
 
 
-def filter_transcripts_by_length(input_filepath, output_filepath, max_length):
+def intersect_fasta_files(input_filepaths, output_filepath):
+    """
+    Extract the sequences whose ids appear in both of the input FASTA files.
+
+    TODO: this is copied from `smallesm.datasets` but cannot be imported from that module
+    because smallesm is not installed in the env in which this script is run.
+    """
+    input_filepath_1, input_filepath_2 = input_filepaths
+
+    tmp_ids_filepath = input_filepath_1.with_suffix(".ids")
+    command = f"seqkit seq {input_filepath_1} --name --only-id > {tmp_ids_filepath}"
+    subprocess.run(command, shell=True)
+
+    command = f"seqkit grep -f {tmp_ids_filepath} {input_filepath_2} -o {output_filepath}"
+    subprocess.run(command, shell=True)
+    os.remove(tmp_ids_filepath)
+
+
+def filter_transcripts_by_longest_peptide_length(
+    transcripts_fasta_filepath, output_filepath, max_length
+):
+    """
+    filter the given fasta file of transcripts to remove any transcripts whose longest putative ORF
+    is longer than the max_length.
+    """
+    # TODO: this path to the fasta file of longest putative ORFs from each transcript
+    # is hard-coded according to the directory structure created by `smallesm datasets construct`.
+    peptides_fasta_filepath = (
+        transcripts_fasta_filepath.parent.parent
+        / "peptides"
+        / f"{transcripts_fasta_filepath.stem}.fa"
+    )
+
+    # we first filter the peptides fasta file by length to generate a fasta file
+    # with which to filter the transcripts.
+    short_peptides_fasta_filepath = peptides_fasta_filepath.with_suffix(".short.fa")
+    filter_sequences_by_length(
+        input_filepath=peptides_fasta_filepath,
+        output_filepath=short_peptides_fasta_filepath,
+        max_length=max_length,
+    )
+    intersect_fasta_files(
+        [transcripts_fasta_filepath, short_peptides_fasta_filepath], output_filepath
+    )
+    os.remove(short_peptides_fasta_filepath)
+
+
+def filter_sequences_by_length(input_filepath, output_filepath, max_length):
     """
     filter the given fasta file to remove any sequences that are longer than the max_length.
     """
@@ -109,9 +156,12 @@ def command(coding_dirpath, noncoding_dirpath, output_dirpath, max_length):
     then generate predictions for each dataset using each model to generate
     a complete matrix of train-test results for all pairs of datasets.
 
-    Each 'dataset' consists of a pair of fasta files, each having the same name,
-    one in the `coding_dirpath` directory containing coding sequences,
-    and one in `noncoding_dirpath` containing noncoding sequences.
+    Each 'dataset' consists of a pair of fasta files of transcripts, each having the same name,
+    one in the `coding_dirpath` directory containing coding transcripts,
+    and one in `noncoding_dirpath` containing noncoding transcripts.
+
+    max_length: used to filter the transcripts used for training and evaluation by dropping
+    transcripts whose longest putative ORF is longer than this length (in amino acids).
     """
     output_dirpath.mkdir(exist_ok=True, parents=True)
 
@@ -127,8 +177,8 @@ def command(coding_dirpath, noncoding_dirpath, output_dirpath, max_length):
             (noncoding_dirpath, noncoding_filenames),
         ]:
             for filename in filenames:
-                filter_transcripts_by_length(
-                    input_filepath=dirpath / f"{filename}.fa",
+                filter_transcripts_by_longest_peptide_length(
+                    transcripts_fasta_filepath=dirpath / f"{filename}.fa",
                     output_filepath=dirpath / f"{filename}-filtered.fa",
                     max_length=max_length,
                 )
