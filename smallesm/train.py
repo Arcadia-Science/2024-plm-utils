@@ -57,16 +57,34 @@ def load_embeddings_and_create_labels(
 
 
 @click.command()
-@click.option("--coding-filepath", type=click.Path(exists=True), required=True)
-@click.option("--noncoding-filepath", type=click.Path(exists=True), required=True)
-@click.option("--model-dirpath", type=click.Path(exists=False), required=False)
+@click.option(
+    "--coding-filepath",
+    type=click.Path(exists=True),
+    required=True,
+    help="Path to a numpy file of embeddings of ORFs from coding transcripts.",
+)
+@click.option(
+    "--noncoding-filepath",
+    type=click.Path(exists=True),
+    required=True,
+    help="Path to a numpy file of embeddings of ORFs from noncoding transcripts.",
+)
+@click.option(
+    "--model-dirpath",
+    type=click.Path(exists=False),
+    required=False,
+    help="Path to the directory to which the trained model will be saved.",
+)
 def train_command(coding_filepath, noncoding_filepath, model_dirpath):
     """
-    Train a classifier using embeddings of peptides from coding and noncoding transcripts
-    and print the validation and test metrics.
+    Train a classifier using embeddings of peptides from coding and noncoding transcripts,
+    print the validation metrics, and save the trained model to a directory if one is provided.
 
-    Note: we do not allow the user to specify a max_length with this command
-    because it requires providing the paths to the corresponding fasta files.
+    TODO: currently this command does not allow the user to specify a maximum sequence length
+    by which to filter the embeddings. Doing so would require adding CLI options to specify
+    both a max length and the fasta filepaths of the coding and noncoding sequences
+    corresponding to the embedding matrices, as the sequence length
+    is not included in the embeddings files themselves.
     """
     x_all, y_all = load_embeddings_and_create_labels(
         coding_embeddings_filepath=coding_filepath,
@@ -78,19 +96,35 @@ def train_command(coding_filepath, noncoding_filepath, model_dirpath):
     if model_dirpath is not None:
         model.save(model_dirpath)
         print(f"Model saved to '{model_dirpath}'")
-    return model
 
 
 @click.command()
-@click.option("--model-dirpath", type=click.Path(exists=True), required=True)
-@click.option("--embeddings-filepath", type=click.Path(exists=True), required=True)
-@click.option("--fasta-filepath", type=click.Path(exists=True), required=False)
-@click.option("--output-filepath", type=click.Path(exists=False), required=True)
+@click.option(
+    "--model-dirpath", type=click.Path(exists=True), required=True, help="Path to a saved model."
+)
+@click.option(
+    "--embeddings-filepath",
+    type=click.Path(exists=True),
+    required=True,
+    help="Path to a numpy file of embeddings.",
+)
+@click.option(
+    "--fasta-filepath",
+    type=click.Path(exists=True),
+    required=False,
+    help="Path to the fasta file of sequences to which the embeddings correspond.",
+)
+@click.option(
+    "--output-filepath",
+    type=click.Path(exists=False),
+    required=True,
+    help="Path to which to save the CSV of coding/noncoding predictions.",
+)
 def predict_command(model_dirpath, embeddings_filepath, fasta_filepath, output_filepath):
     """
-    Predict the labels for an embeddings matrix and a saved model,
+    Predict the labels for the given embeddings matrix and saved model,
+    append the sequence IDs to the resulting predictions (if a fasta filepath is provided),
     and write the predictions to the output filepath as a CSV.
-    If a fasta filepath is provided, the sequence IDs will be included in the CSV file.
     """
     x = np.load(embeddings_filepath)
     model = models.EmbeddingsClassifier.load(model_dirpath)
@@ -114,7 +148,7 @@ def predict_command(model_dirpath, embeddings_filepath, fasta_filepath, output_f
         for ind, _ in predictions.iterrows():
             predictions.at[ind, "sequence_id"] = records[ind].id
 
-    # reorder columns just for readability.
+    # reorder columns, just for the sake of readability.
     predictions = predictions[["sequence_id", "predicted_probability", "predicted_label"]]
     predictions.to_csv(output_filepath, index=False, float_format="%.2f")
     print(f"Predictions saved to '{output_filepath}'")
