@@ -1,5 +1,3 @@
-import pathlib
-
 import click
 import numpy as np
 import pandas as pd
@@ -10,21 +8,11 @@ from smallesm import models
 RANDOM_STATE = 42
 
 
-def load_and_filter_embeddings(embeddings_filepath, fasta_filepath=None, max_length=None):
+def filter_embeddings_by_sequence_length(embeddings, fasta_filepath, max_length):
     """
-    Load the embeddings and, if a fasta_filepath and max_length is provided,
-    filter the embeddings to remove any that correspond to sequences
-    that are longer than the max_length.
+    Filter the embeddings matrix to remove rows that correspond to sequences
+    that are longer than `max_length`.
     """
-    embeddings_filepath = pathlib.Path(embeddings_filepath)
-    embeddings = np.load(embeddings_filepath)
-
-    if max_length is None:
-        return embeddings
-
-    if fasta_filepath is None:
-        raise ValueError("The fasta_filepath must be provided if the max_length is not None.")
-
     filtered_inds = [
         ind
         for ind, record in enumerate(SeqIO.parse(fasta_filepath, "fasta"))
@@ -41,14 +29,22 @@ def load_embeddings_and_create_labels(
     max_length=None,
 ):
     """
-    Load embeddings from the given filepaths and create labels for coding/noncoding.
+    Load embedding matrices from the given filepaths, filter them by sequence length
+    if a max_length was provided, create an array of labels for coding/noncoding,
+    and return a single concatenated embedding matrix and labels array.
     """
-    embeddings_coding = load_and_filter_embeddings(
-        coding_embeddings_filepath, coding_fasta_filepath, max_length
-    )
-    embeddings_noncoding = load_and_filter_embeddings(
-        noncoding_embeddings_filepath, noncoding_fasta_filepath, max_length
-    )
+    embeddings_coding = np.load(coding_embeddings_filepath)
+    embeddings_noncoding = np.load(noncoding_embeddings_filepath)
+
+    if max_length is not None:
+        if coding_fasta_filepath is None or noncoding_fasta_filepath is None:
+            raise ValueError("FASTA files must be provided if max_length is not None.")
+        embeddings_coding = filter_embeddings_by_sequence_length(
+            embeddings_coding, coding_fasta_filepath, max_length
+        )
+        embeddings_noncoding = filter_embeddings_by_sequence_length(
+            embeddings_noncoding, noncoding_fasta_filepath, max_length
+        )
 
     # create labels for the embeddings using 1 for 'coding' and 0 for 'noncoding'.
     labels_coding = np.ones(embeddings_coding.shape[0])
