@@ -73,6 +73,8 @@ def command(coding_dirpath, noncoding_dirpath, output_dirpath, max_length):
         model.train(x, y)
 
         for filename_test in filenames:
+            print(f"Testing on '{filename_test}'")
+
             coding_embeddings_filepath = coding_dirpath / f"{filename_test}.npy"
             noncoding_embeddings_filepath = noncoding_dirpath / f"{filename_test}.npy"
 
@@ -82,17 +84,21 @@ def command(coding_dirpath, noncoding_dirpath, output_dirpath, max_length):
             preds_coding = model.predict_proba(x_coding)[:, 1]
             preds_noncoding = model.predict_proba(x_noncoding)[:, 1]
 
-            records_coding = SeqIO.parse(
-                fasta_filepath_from_embedding_filepath(coding_embeddings_filepath), "fasta"
+            records_coding = list(
+                SeqIO.parse(
+                    fasta_filepath_from_embedding_filepath(coding_embeddings_filepath), "fasta"
+                )
             )
-            records_noncoding = SeqIO.parse(
-                fasta_filepath_from_embedding_filepath(noncoding_embeddings_filepath), "fasta"
+            records_noncoding = list(
+                SeqIO.parse(
+                    fasta_filepath_from_embedding_filepath(noncoding_embeddings_filepath), "fasta"
+                )
             )
 
             predictions = pd.DataFrame(
                 {
                     "sequence_length": [
-                        len(record.seq) for record in list(records_coding) + list(records_noncoding)
+                        len(record.seq) for record in records_coding + records_noncoding
                     ],
                     "true_label": (
                         ["coding"] * len(records_coding) + ["noncoding"] * len(records_noncoding)
@@ -100,6 +106,8 @@ def command(coding_dirpath, noncoding_dirpath, output_dirpath, max_length):
                     "predicted_probability": list(preds_coding) + list(preds_noncoding),
                 }
             )
+            predictions["training_species_id"] = filename_train
+            predictions["testing_species_id"] = filename_test
 
             predictions.to_csv(
                 output_dirpath / f"trained-on-{filename_train}-tested-on-{filename_test}-preds.csv",
