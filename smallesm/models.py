@@ -166,7 +166,9 @@ class EmbeddingsClassifier:
 
     def predict_proba(self, x):
         """
-        Return prediction probabilities for the given matrix of embeddings.
+        Return predicted probabilities for the given matrix of embeddings
+        as an array of shape (x.shape[0], 2) in which the columns are the predicted probabilities
+        for the negative and positive classes, respectively.
         """
         x_pcs = self.pca.transform(x)
         return self.classifier.predict_proba(x_pcs)
