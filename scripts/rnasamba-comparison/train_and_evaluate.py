@@ -74,7 +74,7 @@ def deleted_filtered_files(dirpaths):
             os.remove(filepath)
 
 
-def train(coding_train_filepath, noncoding_train_filepath, model_filepath):
+def train_rnasamba(coding_train_filepath, noncoding_train_filepath, model_filepath):
     """
     Train an RNASamba model.
 
@@ -98,7 +98,9 @@ def train(coding_train_filepath, noncoding_train_filepath, model_filepath):
     )
 
 
-def evaluate(coding_test_filepath, noncoding_test_filepath, model_filepath, predictions_filepath):
+def evaluate_rnasamba(
+    coding_test_filepath, noncoding_test_filepath, model_filepath, predictions_filepath
+):
     """
     Evaluate an RNSamba model.
     """
@@ -197,7 +199,7 @@ def command(coding_dirpath, noncoding_dirpath, output_dirpath, max_length):
             print(f"Model '{model_filepath}' already exists; skipping training.")
         else:
             print(f"Training on '{train_filename}'")
-            train(
+            train_rnasamba(
                 coding_train_filepath=coding_dirpath / f"{train_filename}.fa",
                 noncoding_train_filepath=noncoding_dirpath / f"{train_filename}.fa",
                 model_filepath=model_filepath,
@@ -214,7 +216,7 @@ def command(coding_dirpath, noncoding_dirpath, output_dirpath, max_length):
                 print(f"Predictions '{predictions_filepath}' already exist; skipping evaluation.")
                 continue
 
-            evaluate(
+            evaluate_rnasamba(
                 coding_test_filepath=coding_dirpath / f"{test_filename}.fa",
                 noncoding_test_filepath=noncoding_dirpath / f"{test_filename}.fa",
                 model_filepath=model_filepath,

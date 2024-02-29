@@ -5,8 +5,9 @@ This script is not a module of the main `smallesm` package and indeed it cannot 
 
 To set up the environment to run this script, first create a new env from the `rnasamba.yml` file:
 ```bash
-mamba env create -n rnasamba-env -f rnasamba.yml
+mamba env create -n rnasamba-env -f envs/rnasamba.yml
 ```
+Note that the `envs/` directory is relative to the root of the repository.
 
 Then activate the environment:
 ```bash
