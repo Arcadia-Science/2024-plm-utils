@@ -102,7 +102,7 @@ def predict_command(model_dirpath, embeddings_filepath, fasta_filepath, output_f
     predicted_labels = ["coding" if p > 0.5 else "noncoding" for p in predicted_probabilities]
 
     predictions = pd.DataFrame(
-        {"prediction": predicted_labels, "probability": predicted_probabilities}
+        {"predicted_label": predicted_labels, "predicted_probability": predicted_probabilities}
     )
     predictions["sequence_id"] = None
 
@@ -113,7 +113,12 @@ def predict_command(model_dirpath, embeddings_filepath, fasta_filepath, output_f
                 f"The number of records in the given fasta file ({len(records)}) "
                 f"does not match the number of predictions ({len(predictions)})."
             )
-        for ind, row in predictions.iterrows():
-            row["sequence_id"] = records[ind].id
+        # we assume that the order of the records in the fasta file matches the order
+        # of the predictions (that is, the order of the rows in the embeddings matrix).
+        for ind, _ in predictions.iterrows():
+            predictions.at[ind, "sequence_id"] = records[ind].id
 
-    predictions.to_csv(output_filepath, index=False)
+    # reorder columns just for readability.
+    predictions = predictions[["sequence_id", "predicted_probability", "predicted_label"]]
+    predictions.to_csv(output_filepath, index=False, float_format="%.2f")
+    print(f"Predictions saved to '{output_filepath}'")

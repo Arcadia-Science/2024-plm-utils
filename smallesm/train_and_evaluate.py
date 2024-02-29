@@ -97,6 +97,7 @@ def command(coding_dirpath, noncoding_dirpath, output_dirpath, max_length):
 
             predictions = pd.DataFrame(
                 {
+                    "sequence_id": [record.id for record in records_coding + records_noncoding],
                     "sequence_length": [
                         len(record.seq) for record in records_coding + records_noncoding
                     ],
