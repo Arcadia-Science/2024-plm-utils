@@ -1,3 +1,5 @@
+import pathlib
+
 import click
 import esm
 import esm.data
@@ -50,8 +52,10 @@ def embed(fasta_filepath, model_name, layer_ind, output_filepath):
     and the sequences in the input FASTA file; we rely on the preservation of order,
     which is not a good idea.
     """
+    output_filepath = pathlib.Path(output_filepath)
+    output_filepath.parent.mkdir(parents=True, exist_ok=True)
 
-    # TODO (KC): understand the logic behind these numbers
+    # TODO (KC): understand the logic behind these numbers.
     # (they are copied from esm/scripts/extract.py)
     toks_per_batch = 4096
     truncation_seq_length = 1022
@@ -72,7 +76,7 @@ def embed(fasta_filepath, model_name, layer_ind, output_filepath):
     dataset = esm.FastaBatchedDataset.from_file(fasta_filepath)
     batches = dataset.get_batch_indices(toks_per_batch, extra_toks_per_seq=1)
 
-    # note: the dataloader yields batches in the form of `(sequence_ids, sequences, tokens)`
+    # note: the dataloader yields batches in the form of `(sequence_ids, sequences, tokens)`.
     dataloader = torch.utils.data.DataLoader(
         dataset,
         collate_fn=alphabet.get_batch_converter(truncation_seq_length),

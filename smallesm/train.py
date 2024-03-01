@@ -1,191 +1,154 @@
-import pathlib
-
 import click
 import numpy as np
-import sklearn
-import sklearn.decomposition
-import sklearn.ensemble
-import sklearn.model_selection
+import pandas as pd
 from Bio import SeqIO
+
+from smallesm import models
 
 RANDOM_STATE = 42
 
 
-def load_and_filter_embeddings(embeddings_filepath, max_length=None):
+def filter_embeddings_by_sequence_length(embeddings, fasta_filepath, max_length):
     """
-    Filter the given embeddings to remove any that correspond to sequences
-    that are longer than the max_length.
+    Filter the embeddings matrix to remove rows that correspond to sequences
+    that are longer than `max_length`.
     """
-    embeddings_filepath = pathlib.Path(embeddings_filepath)
-    embeddings = np.load(embeddings_filepath)
-
-    if max_length is None:
-        return embeddings
-
-    # TODO: this path to the peptides fasta file corresponding to the given embeddings file
-    # is hard-coded according to the directory structure created by `smallesm datasets construct`.
-    # This is brittle and should be made more generic.
-    peptides_fasta_filepath = (
-        embeddings_filepath.parent.parent.parent / "peptides" / f"{embeddings_filepath.stem}.fa"
-    )
-
     filtered_inds = [
         ind
-        for ind, record in enumerate(SeqIO.parse(peptides_fasta_filepath, "fasta"))
+        for ind, record in enumerate(SeqIO.parse(fasta_filepath, "fasta"))
         if len(record.seq) <= max_length
     ]
     return embeddings[filtered_inds, :]
 
 
-def load_embeddings_and_labels(coding_filepath, noncoding_filepath, max_length=None):
+def load_embeddings_and_create_labels(
+    coding_embeddings_filepath,
+    noncoding_embeddings_filepath,
+    coding_fasta_filepath=None,
+    noncoding_fasta_filepath=None,
+    max_length=None,
+):
     """
-    Load embeddings from the given filepaths and create labels for coding/noncoding.
+    Load embedding matrices from the given filepaths, filter them by sequence length
+    if a max_length was provided, create an array of labels for coding/noncoding,
+    and return a single concatenated embedding matrix and labels array.
     """
-    embeddings_coding = load_and_filter_embeddings(coding_filepath, max_length)
-    embeddings_noncoding = load_and_filter_embeddings(noncoding_filepath, max_length)
+    embeddings_coding = np.load(coding_embeddings_filepath)
+    embeddings_noncoding = np.load(noncoding_embeddings_filepath)
+
+    if max_length is not None:
+        if coding_fasta_filepath is None or noncoding_fasta_filepath is None:
+            raise ValueError("FASTA files must be provided if max_length is not None.")
+        embeddings_coding = filter_embeddings_by_sequence_length(
+            embeddings_coding, coding_fasta_filepath, max_length
+        )
+        embeddings_noncoding = filter_embeddings_by_sequence_length(
+            embeddings_noncoding, noncoding_fasta_filepath, max_length
+        )
 
     # create labels for the embeddings using 1 for 'coding' and 0 for 'noncoding'.
     labels_coding = np.ones(embeddings_coding.shape[0])
     labels_noncoding = np.zeros(embeddings_noncoding.shape[0])
 
-    embeddings_all = np.concatenate([embeddings_coding, embeddings_noncoding], axis=0)
     labels_all = np.concatenate([labels_coding, labels_noncoding])
+    embeddings_all = np.concatenate([embeddings_coding, embeddings_noncoding], axis=0)
 
     return embeddings_all, labels_all
 
 
-def train(
-    coding_train_filepath,
-    noncoding_train_filepath,
-    coding_test_filepath=None,
-    noncoding_test_filepath=None,
-    max_length=None,
-):
+@click.command()
+@click.option(
+    "--coding-filepath",
+    type=click.Path(exists=True),
+    required=True,
+    help="Path to a numpy file of embeddings of ORFs from coding transcripts.",
+)
+@click.option(
+    "--noncoding-filepath",
+    type=click.Path(exists=True),
+    required=True,
+    help="Path to a numpy file of embeddings of ORFs from noncoding transcripts.",
+)
+@click.option(
+    "--model-dirpath",
+    type=click.Path(exists=False),
+    required=False,
+    help="Path to the directory to which the trained model will be saved.",
+)
+def train_command(coding_filepath, noncoding_filepath, model_dirpath):
     """
-    Train a random forest classifier using embeddings of peptides from coding and noncoding
-    transcripts and print the validation and test metrics.
+    Train a classifier using embeddings of peptides from coding and noncoding transcripts,
+    print the validation metrics, and save the trained model to a directory if one is provided.
 
-    Nomenclature note: we follow the sklearn convention of using `x` to denote
-    the matrix of input features and `y` to denote the labels we are trying to predict.
+    TODO: currently this command does not allow the user to specify a maximum sequence length
+    by which to filter the embeddings. Doing so would require adding CLI options to specify
+    both a max length and the fasta filepaths of the coding and noncoding sequences
+    corresponding to the embedding matrices, as the sequence length
+    is not included in the embeddings files themselves.
     """
-
-    x_all, y_all = load_embeddings_and_labels(
-        coding_train_filepath, noncoding_train_filepath, max_length
+    x_all, y_all = load_embeddings_and_create_labels(
+        coding_embeddings_filepath=coding_filepath,
+        noncoding_embeddings_filepath=noncoding_filepath,
     )
+    model = models.EmbeddingsClassifier.init(verbose=True)
+    model.train(x_all, y_all)
 
-    # use PCA to reduce the dimensionality of the data to make training faster.
-    # (`n_components` was chosen empirically from a plot of the explained variance.)
-    pca = sklearn.decomposition.PCA(n_components=30)
-    pca.fit(x_all)
-    x_pcs = pca.transform(x_all)
-
-    x_train, x_validation, y_train, y_validation = sklearn.model_selection.train_test_split(
-        x_pcs, y_all, test_size=0.2, random_state=RANDOM_STATE
-    )
-
-    # `n_estimators` and `min_samples_split` were chosen empirically for fast training,
-    # but performance doesn't seem to improve much with more estimators or deeper trees.
-    # `class_weight="balanced"` is used to compensate for the class imbalance
-    # between coding and noncoding transcripts.
-    model = sklearn.ensemble.RandomForestClassifier(
-        n_estimators=30,
-        min_samples_split=10,
-        class_weight="balanced",
-        n_jobs=-1,
-        random_state=RANDOM_STATE,
-    )
-
-    model.fit(x_train, y_train)
-
-    y_train_pred = model.predict_proba(x_train)
-    train_metrics = calc_metrics(y_train, y_train_pred)
-    pretty_print_metrics(train_metrics, header="Training metrics")
-
-    y_validation_pred = model.predict_proba(x_validation)
-    validation_metrics = calc_metrics(y_validation, y_validation_pred)
-    pretty_print_metrics(validation_metrics, header="Validation metrics")
-
-    test_metrics = {}
-    if coding_test_filepath is not None and noncoding_test_filepath is not None:
-        x_test, y_test = load_embeddings_and_labels(
-            coding_test_filepath, noncoding_test_filepath, max_length
-        )
-        x_test_pcs = pca.transform(x_test)
-        y_test_pred = model.predict_proba(x_test_pcs)
-        test_metrics = calc_metrics(y_test, y_test_pred)
-        pretty_print_metrics(test_metrics, header="Test metrics")
-
-    return test_metrics
-
-
-def calc_metrics(y_true, y_pred_proba):
-    """
-    Calculate performance metrics for the given true and predicted labels.
-
-    y_true : array-like of shape (n_samples,)
-        The true binary labels.
-    y_pred_proba : array-like of shape (n_samples, 2)
-        The predicted probabilities for the negative and positive classes;
-        output by the `predict_proba` method of sklearn classifiers.
-    """
-    y_pred_proba = y_pred_proba[:, 1]
-    y_pred = (y_pred_proba > 0.5).astype(int)
-    accuracy = sklearn.metrics.accuracy_score(y_true, y_pred)
-    precision = sklearn.metrics.precision_score(y_true, y_pred)
-    recall = sklearn.metrics.recall_score(y_true, y_pred)
-    mcc = sklearn.metrics.matthews_corrcoef(y_true, y_pred)
-    f1 = sklearn.metrics.f1_score(y_true, y_pred)
-
-    # `roc_auc_score` raises a ValueError if only one class is present in `y_true`.
-    try:
-        auc_roc = sklearn.metrics.roc_auc_score(y_true, y_pred_proba)
-    except ValueError:
-        auc_roc = np.nan
-
-    return {
-        "accuracy": accuracy,
-        "precision": precision,
-        "recall": recall,
-        "mcc": mcc,
-        "f1": f1,
-        "auc_roc": auc_roc,
-    }
-
-
-def pretty_print_metrics(metrics, header=None):
-    """
-    Print the given dict of metrics in a human-readable format.
-    """
-    output = "\n".join([f"{metric.capitalize()}: {value:.2f}" for metric, value in metrics.items()])
-
-    if header is not None:
-        output = f"{header}\n{output}"
-
-    print(output)
+    if model_dirpath is not None:
+        model.save(model_dirpath)
+        print(f"Model saved to '{model_dirpath}'")
 
 
 @click.command()
-@click.option("--coding-train-filepath", type=click.Path(exists=True), required=True)
-@click.option("--noncoding-train-filepath", type=click.Path(exists=True), required=True)
-@click.option("--coding-test-filepath", type=click.Path(exists=True), required=False)
-@click.option("--noncoding-test-filepath", type=click.Path(exists=True), required=False)
 @click.option(
-    "--max-length",
-    type=int,
-    required=False,
-    help="Maximum length of the peptides to use for training and testing",
+    "--model-dirpath", type=click.Path(exists=True), required=True, help="Path to a saved model."
 )
-def command(
-    coding_train_filepath,
-    noncoding_train_filepath,
-    coding_test_filepath,
-    noncoding_test_filepath,
-    max_length,
-):
-    train(
-        coding_train_filepath=coding_train_filepath,
-        noncoding_train_filepath=noncoding_train_filepath,
-        coding_test_filepath=coding_test_filepath,
-        noncoding_test_filepath=noncoding_test_filepath,
-        max_length=max_length,
+@click.option(
+    "--embeddings-filepath",
+    type=click.Path(exists=True),
+    required=True,
+    help="Path to a numpy file of embeddings.",
+)
+@click.option(
+    "--fasta-filepath",
+    type=click.Path(exists=True),
+    required=False,
+    help="Path to the fasta file of sequences to which the embeddings correspond.",
+)
+@click.option(
+    "--output-filepath",
+    type=click.Path(exists=False),
+    required=True,
+    help="Path to which to save the CSV of coding/noncoding predictions.",
+)
+def predict_command(model_dirpath, embeddings_filepath, fasta_filepath, output_filepath):
+    """
+    Predict the labels for the given embeddings matrix and saved model,
+    append the sequence IDs to the resulting predictions (if a fasta filepath is provided),
+    and write the predictions to the output filepath as a CSV.
+    """
+    x = np.load(embeddings_filepath)
+    model = models.EmbeddingsClassifier.load(model_dirpath)
+    predicted_probabilities = model.predict_proba(x)[:, 1]
+    predicted_labels = ["coding" if p > 0.5 else "noncoding" for p in predicted_probabilities]
+
+    predictions = pd.DataFrame(
+        {"predicted_label": predicted_labels, "predicted_probability": predicted_probabilities}
     )
+    predictions["sequence_id"] = None
+
+    if fasta_filepath is not None:
+        records = list(SeqIO.parse(fasta_filepath, "fasta"))
+        if len(records) != len(predictions):
+            raise ValueError(
+                f"The number of records in the given fasta file ({len(records)}) "
+                f"does not match the number of predictions ({len(predictions)})."
+            )
+        # we assume that the order of the records in the fasta file matches the order
+        # of the predictions (that is, the order of the rows in the embeddings matrix).
+        for ind, _ in predictions.iterrows():
+            predictions.at[ind, "sequence_id"] = records[ind].id
+
+    # reorder columns, just for the sake of readability.
+    predictions = predictions[["sequence_id", "predicted_probability", "predicted_label"]]
+    predictions.to_csv(output_filepath, index=False, float_format="%.2f")
+    print(f"Predictions saved to '{output_filepath}'")
