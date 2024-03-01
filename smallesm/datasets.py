@@ -444,9 +444,15 @@ def translate_and_embed(dirpaths):
 @click.option("--peptipedia-filepath", type=click.Path(exists=True, path_type=pathlib.Path))
 def blast_peptipedia(dirpaths, peptipedia_filepath):
     """
-    Blast the amino acid sequences in the specified directories against Peptipedia,
-    and write the results to a new directory called "blast-peptipedia-results"
+    Blast the fasta files of peptide/protein sequences in the specified directories
+    against Peptipedia, and write the results to a new directory called "blast-peptipedia-results"
     in each directory's parent directory.
+
+    The peptipedia filepath is the path to a local copy of the Peptipedia database,
+    which can be downloaded as follows:
+    ```
+    curl -JLo peptipedia.fa.gz https://osf.io/dzycu/download
+    ```
     """
 
     db_filepath = peptipedia_filepath.parent / "peptipedia-database.dmnd"
@@ -458,6 +464,8 @@ def blast_peptipedia(dirpaths, peptipedia_filepath):
             shell=True,
         )
 
+    # we use "6" for the "tabular" format.
+    blast_output_format = "6"
     blast_output_columns = (
         "qseqid sseqid full_sseq pident length qlen slen mismatch gapopen qstart qend sstart send "
         "evalue bitscore"
@@ -473,12 +481,12 @@ def blast_peptipedia(dirpaths, peptipedia_filepath):
                     -d {db_filepath} \
                     -q {input_filepath} \
                     -o {output_filepath} \
-                    --outfmt 6 {blast_output_columns}
+                    --outfmt {blast_output_format} {blast_output_columns}
             """
             commands.append(command)
 
     futures = []
-    with ThreadPoolExecutor(max_workers=40) as executor:
+    with ThreadPoolExecutor(max_workers=20) as executor:
         for command in commands:
             futures.append(executor.submit(subprocess.run, command, shell=True))
         for future in tqdm.tqdm(concurrent.futures.as_completed(futures), total=len(futures)):
