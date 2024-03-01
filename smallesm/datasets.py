@@ -409,8 +409,9 @@ def construct(dataset_metadata_filepath, output_dirpath, subsample_factor):
 @click.argument("dirpaths", nargs=-1, type=click.Path(exists=True, path_type=pathlib.Path))
 def translate_and_embed(dirpaths):
     """
-    Translate the fasta files in the specified directories of amino acid sequences
-    and embed them using ESM.
+    Find the longest ORF in each transcript in the fasta files in the specified directories,
+    embed them using ESM, and write the results to new directories called "peptides"
+    and "embeddings", respectively, in each directory's parent directory.
     """
 
     # TODO: don't hard-code the model name.
@@ -436,3 +437,60 @@ def translate_and_embed(dirpaths):
                 layer_ind=-1,
                 output_filepath=embeddings_filepath,
             )
+
+
+@cli.command()
+@click.argument("dirpaths", nargs=-1, type=click.Path(exists=True, path_type=pathlib.Path))
+@click.option("--peptipedia-filepath", type=click.Path(exists=True, path_type=pathlib.Path))
+def blast_peptipedia(dirpaths, peptipedia_filepath):
+    """
+    Blast the fasta files of peptide/protein sequences in the specified directories
+    against Peptipedia, and write the results to a new directory called "blast-peptipedia-results"
+    in each directory's parent directory.
+
+    The peptipedia filepath is the path to a local copy of the Peptipedia database,
+    which can be downloaded as follows:
+    ```
+    curl -JLo peptipedia.fa.gz https://osf.io/dzycu/download
+    ```
+    """
+
+    db_filepath = peptipedia_filepath.parent / "peptipedia-database.dmnd"
+    if db_filepath.exists():
+        print("Peptipedia database already exists; skipping creation.")
+    else:
+        subprocess.run(
+            f"diamond makedb --in {peptipedia_filepath} --db {db_filepath.with_suffix('')}",
+            shell=True,
+        )
+
+    # we use "6" for the "tabular" format.
+    blast_output_format = "6"
+    blast_output_columns = (
+        "qseqid sseqid full_sseq pident length qlen slen mismatch gapopen qstart qend sstart send "
+        "evalue bitscore"
+    )
+    commands = []
+    for dirpath in dirpaths:
+        blast_results_dirpath = dirpath.parent / "blast-peptipedia-results"
+        blast_results_dirpath.mkdir(parents=True, exist_ok=True)
+        for input_filepath in dirpath.glob("*.fa"):
+            output_filepath = blast_results_dirpath / f"{input_filepath.stem}.tsv"
+            command = f"""
+                diamond blastp \
+                    -d {db_filepath} \
+                    -q {input_filepath} \
+                    -o {output_filepath} \
+                    --outfmt {blast_output_format} {blast_output_columns}
+            """
+            commands.append(command)
+
+    futures = []
+    with ThreadPoolExecutor(max_workers=20) as executor:
+        for command in commands:
+            futures.append(executor.submit(subprocess.run, command, shell=True))
+        for future in tqdm.tqdm(concurrent.futures.as_completed(futures), total=len(futures)):
+            try:
+                future.result()
+            except Exception as exception:
+                print(f"Error running blast: {exception}")
