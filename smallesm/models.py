@@ -1,7 +1,6 @@
 import pathlib
 
 import joblib
-import numpy as np
 import sklearn
 import sklearn.decomposition
 import sklearn.ensemble
@@ -16,22 +15,15 @@ def calc_metrics(y_true, y_pred_proba):
 
     y_true : array-like of shape (n_samples,)
         The true binary labels.
-    y_pred_proba : array-like of shape (n_samples, 2)
-        The predicted probabilities for the negative and positive classes
-        (this is the output by the `predict_proba` method of sklearn classifiers).
+    y_pred_proba : array-like of shape (n_samples,)
+        The predicted probabilities for the positive classes
+        (this is the second column of the array returned by the `predict_proba` method
+        of sklearn classifiers).
     """
-    # the probability of the positive class is in the second column.
-    y_pred_proba = y_pred_proba[:, 1]
     y_pred = (y_pred_proba > 0.5).astype(int)
 
-    # `roc_auc_score` raises a ValueError if only one class is present in `y_true`.
-    try:
-        auc_roc = sklearn.metrics.roc_auc_score(y_true, y_pred_proba)
-    except ValueError:
-        auc_roc = np.nan
-
     return {
-        "auc_roc": auc_roc,
+        "auc_roc": sklearn.metrics.roc_auc_score(y_true, y_pred_proba),
         "accuracy": sklearn.metrics.accuracy_score(y_true, y_pred),
         "precision": sklearn.metrics.precision_score(y_true, y_pred),
         "recall": sklearn.metrics.recall_score(y_true, y_pred),
@@ -150,7 +142,7 @@ class EmbeddingsClassifier:
         self.classifier.fit(x_train, y_train)
 
         y_validation_pred = self.classifier.predict_proba(x_validation)
-        validation_metrics = calc_metrics(y_validation, y_validation_pred)
+        validation_metrics = calc_metrics(y_validation, y_validation_pred[:, 1])
         if self.verbose:
             pretty_print_metrics(validation_metrics, header="Validation metrics")
 
