@@ -8,12 +8,16 @@ import urllib
 from concurrent.futures import ThreadPoolExecutor
 
 import click
+import numpy as np
 import pandas as pd
 import requests
 import tqdm
+from Bio import SeqIO
 
-from smallesm.embed import embed
-from smallesm.translate import translate
+from plmutils import models
+from plmutils.classifier import load_embeddings_and_create_labels
+from plmutils.embed import embed
+from plmutils.translate import translate
 
 
 def add_suffix_to_path(path: pathlib.Path, suffix: str) -> pathlib.Path:
@@ -110,50 +114,6 @@ def download_files(urls_filepaths, overwrite=False):
                 future.result()
             except Exception as exception:
                 print(f"Error downloading dataset: {exception}")
-
-
-def download_transcriptomes(
-    dataset_metadata_filepath, output_dirpath, overwrite=False, dry_run=False
-):
-    """
-    Download the coding and non-coding transcriptomes for each species in the metadata file.
-
-    The metadata file should have the following columns:
-        - species_id: a short and unique identifier for the species
-        - root_url: the base URL for the species
-        - cdna_endpoint: the relative URL for the fasta file of coding transcripts
-        - ncrna_endpoint: the relative URL for the fasta file of non-coding transcripts
-
-    The coding and non-coding transcripts are downloaded to separate subdirectories
-    of the output directory and named with the species_id:
-        output_dirpath/
-            cdna/
-                {species_id}.fa.gz
-            ncrna/
-                {species_id}.fa.gz
-    """
-
-    metadata = pd.read_csv(dataset_metadata_filepath, sep="\t")
-
-    cdna_dirpath = output_dirpath / "cdna"
-    ncrna_dirpath = output_dirpath / "ncrna"
-
-    cdna_dirpath.mkdir(parents=True, exist_ok=True)
-    ncrna_dirpath.mkdir(parents=True, exist_ok=True)
-
-    urls_filepaths = []
-    for _, row in metadata.iterrows():
-        for endpoint, dirpath in [
-            (row.cdna_endpoint, cdna_dirpath),
-            (row.ncrna_endpoint, ncrna_dirpath),
-        ]:
-            url = urllib.parse.urljoin(row.root_url, endpoint)
-            filepath = dirpath / f"{row.species_id}.fa.gz"
-            urls_filepaths.append((url, filepath))
-
-    if not dry_run:
-        download_files(urls_filepaths, overwrite=overwrite)
-    return cdna_dirpath, ncrna_dirpath
 
 
 @log_calls
@@ -287,13 +247,44 @@ def cli():
 @click.argument("dataset_metadata_filepath", type=click.Path(exists=True, path_type=pathlib.Path))
 @click.argument("output_dirpath", type=click.Path(path_type=pathlib.Path))
 @click.option("--overwrite", is_flag=True, help="Overwrite existing files")
-def download(dataset_metadata_filepath, output_dirpath, overwrite):
+def download_data(dataset_metadata_filepath, output_dirpath, overwrite):
     """
     Download the coding and non-coding transcriptomes for each species in the metadata file.
+
+    The dataset metadata file should have the following columns:
+        - species_id: a short and unique identifier for the species
+        - root_url: the base URL for the species
+        - cdna_endpoint: the relative URL for the fasta file of coding transcripts
+        - ncrna_endpoint: the relative URL for the fasta file of non-coding transcripts
+
+    The coding and non-coding transcripts are downloaded to separate subdirectories
+    of the output directory and named with the species_id:
+        output_dirpath/
+            cdna/
+                {species_id}.fa.gz
+            ncrna/
+                {species_id}.fa.gz
     """
-    download_transcriptomes(
-        dataset_metadata_filepath, output_dirpath / "raw", overwrite=overwrite, dry_run=False
-    )
+    metadata = pd.read_csv(dataset_metadata_filepath, sep="\t")
+
+    output_dirpath = output_dirpath / "raw"
+    cdna_dirpath = output_dirpath / "cdna"
+    ncrna_dirpath = output_dirpath / "ncrna"
+
+    cdna_dirpath.mkdir(parents=True, exist_ok=True)
+    ncrna_dirpath.mkdir(parents=True, exist_ok=True)
+
+    urls_filepaths = []
+    for _, row in metadata.iterrows():
+        for endpoint, dirpath in [
+            (row.cdna_endpoint, cdna_dirpath),
+            (row.ncrna_endpoint, ncrna_dirpath),
+        ]:
+            url = urllib.parse.urljoin(row.root_url, endpoint)
+            filepath = dirpath / f"{row.species_id}.fa.gz"
+            urls_filepaths.append((url, filepath))
+
+    return cdna_dirpath, ncrna_dirpath
 
 
 @cli.command()
@@ -305,12 +296,12 @@ def download(dataset_metadata_filepath, output_dirpath, overwrite):
     default=3,
     help="Factor by which to subsample the sequences in each dataset",
 )
-def construct(dataset_metadata_filepath, output_dirpath, subsample_factor):
+def construct_data(dataset_metadata_filepath, output_dirpath, subsample_factor):
     """
     Construct the training datasets from the downloaded transcriptomes.
 
     This command assumes that the coding and non-coding transcriptomes have been downloaded
-    to the output_dirpath directory using the `download` command.
+    to the output_dirpath directory using the `download_data` command.
 
     Note: the de facto pipeline that this command implements
     is based on the snakemake pipeline defined in the `arcadia-science/peptigate` repo
@@ -319,10 +310,13 @@ def construct(dataset_metadata_filepath, output_dirpath, subsample_factor):
     TODO: there is currently no overwrite option; the user must manually delete
     output directories or files in order to re-run certain steps of this de facto pipeline.
     """
-    raw_cdna_dirpath, raw_ncrna_dirpath = download_transcriptomes(
-        dataset_metadata_filepath, output_dirpath / "raw", dry_run=True
-    )
 
+    # these are the paths to the raw data directories created by the `download_data` command.
+    raw_cdna_dirpath = output_dirpath / "raw" / "cdna"
+    raw_ncrna_dirpath = output_dirpath / "raw" / "ncrna"
+
+    # to clearly separate the processed and raw datasets,
+    # we write all of the processed data to a subdirectory of the output directory.
     output_dirpath = output_dirpath / "processed"
 
     # prepend the species ID to the sequence IDs in all of the coding and noncoding fasta files.
@@ -494,3 +488,110 @@ def blast_peptipedia(dirpaths, peptipedia_filepath):
                 future.result()
             except Exception as exception:
                 print(f"Error running blast: {exception}")
+
+
+def fasta_filepath_from_embedding_filepath(embedding_filepath):
+    """
+    Given the path to an embeddings file, return the path to the fasta file
+    from which the sequences were taken, assuming the directory structure
+    created by the `translate_and_embed` command above.
+    """
+    return embedding_filepath.parent.parent.parent / "peptides" / f"{embedding_filepath.stem}.fa"
+
+
+@cli.command()
+@click.option(
+    "--coding-dirpath", type=click.Path(exists=True, path_type=pathlib.Path), required=True
+)
+@click.option(
+    "--noncoding-dirpath", type=click.Path(exists=True, path_type=pathlib.Path), required=True
+)
+@click.option(
+    "--output-dirpath", type=click.Path(exists=False, path_type=pathlib.Path), required=True
+)
+@click.option(
+    "--max-length", type=int, required=False, help="Maximum length of the peptides to use"
+)
+def train_and_evaluate(coding_dirpath, noncoding_dirpath, output_dirpath, max_length):
+    """
+    Train and test models using all pairs of embedding matrices in the given directories.
+    These directories are assumed to have been created via the `construct_data` command above.
+
+    Parameters
+    ----------
+    coding_dirpath, noncoding_dirpath: Paths to directories of embedding matrices
+        of coding and noncoding sequences, saved as numpy files.
+    output_filepath: Path to the CSV file to save the test metrics to.
+    max_length: Maximum length of the peptides to use during training and testing.
+    """
+    output_dirpath.mkdir(exist_ok=True, parents=True)
+    coding_filenames = sorted([path.stem for path in coding_dirpath.glob("*.npy")])
+    noncoding_filenames = sorted([path.stem for path in noncoding_dirpath.glob("*.npy")])
+
+    # sanity-check that the same files are present in both directories.
+    assert set(coding_filenames) == set(noncoding_filenames)
+    filenames = coding_filenames
+
+    for filename_train in filenames:
+        print(f"Training on '{filename_train}'")
+
+        coding_embeddings_filepath = coding_dirpath / f"{filename_train}.npy"
+        noncoding_embeddings_filepath = noncoding_dirpath / f"{filename_train}.npy"
+
+        x, y = load_embeddings_and_create_labels(
+            coding_embeddings_filepath=coding_embeddings_filepath,
+            noncoding_embeddings_filepath=noncoding_embeddings_filepath,
+            coding_fasta_filepath=fasta_filepath_from_embedding_filepath(
+                coding_embeddings_filepath
+            ),
+            noncoding_fasta_filepath=fasta_filepath_from_embedding_filepath(
+                noncoding_embeddings_filepath
+            ),
+            max_length=max_length,
+        )
+
+        model = models.EmbeddingsClassifier.init(verbose=True)
+        model.train(x, y)
+
+        for filename_test in filenames:
+            print(f"Testing on '{filename_test}'")
+
+            coding_embeddings_filepath = coding_dirpath / f"{filename_test}.npy"
+            noncoding_embeddings_filepath = noncoding_dirpath / f"{filename_test}.npy"
+
+            x_coding = np.load(coding_embeddings_filepath)
+            x_noncoding = np.load(noncoding_embeddings_filepath)
+
+            preds_coding = model.predict_proba(x_coding)[:, 1]
+            preds_noncoding = model.predict_proba(x_noncoding)[:, 1]
+
+            records_coding = list(
+                SeqIO.parse(
+                    fasta_filepath_from_embedding_filepath(coding_embeddings_filepath), "fasta"
+                )
+            )
+            records_noncoding = list(
+                SeqIO.parse(
+                    fasta_filepath_from_embedding_filepath(noncoding_embeddings_filepath), "fasta"
+                )
+            )
+
+            predictions = pd.DataFrame(
+                {
+                    "sequence_id": [record.id for record in records_coding + records_noncoding],
+                    "sequence_length": [
+                        len(record.seq) for record in records_coding + records_noncoding
+                    ],
+                    "true_label": (
+                        ["coding"] * len(records_coding) + ["noncoding"] * len(records_noncoding)
+                    ),
+                    "predicted_probability": list(preds_coding) + list(preds_noncoding),
+                }
+            )
+            predictions["training_species_id"] = filename_train
+            predictions["testing_species_id"] = filename_test
+
+            predictions.to_csv(
+                output_dirpath / f"trained-on-{filename_train}-tested-on-{filename_test}-preds.csv",
+                index=False,
+            )

@@ -11,8 +11,8 @@ def intersect_fasta_files(input_filepaths, output_filepath):
     """
     Extract the sequences whose ids appear in both of the input FASTA files.
 
-    TODO: this is copied from `smallesm.datasets` but cannot be imported from that module
-    because smallesm is not installed in the env in which this script is run.
+    TODO: this is copied from `plmutils.tasks.classify_orfs` but cannot be imported from that module
+    because the plmutils package cannot installed in the env in which this script is run.
     """
     input_filepath_1, input_filepath_2 = input_filepaths
 
@@ -33,7 +33,8 @@ def filter_transcripts_by_longest_peptide_length(
     is longer than the max_length.
     """
     # TODO: this path to the fasta file of longest putative ORFs from each transcript
-    # is hard-coded according to the directory structure created by `smallesm datasets construct`.
+    # is hard-coded according to the directory structure created by
+    # `plmutils classify-orfs construct-data`.
     peptides_fasta_filepath = (
         transcripts_fasta_filepath.parent.parent
         / "peptides"

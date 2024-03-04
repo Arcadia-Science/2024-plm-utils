@@ -3,7 +3,7 @@ import numpy as np
 import pandas as pd
 from Bio import SeqIO
 
-from smallesm import models
+from plmutils import models
 
 RANDOM_STATE = 42
 
