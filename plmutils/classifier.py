@@ -22,52 +22,52 @@ def filter_embeddings_by_sequence_length(embeddings, fasta_filepath, max_length)
 
 
 def load_embeddings_and_create_labels(
-    coding_embeddings_filepath,
-    noncoding_embeddings_filepath,
-    coding_fasta_filepath=None,
-    noncoding_fasta_filepath=None,
+    positive_class_embeddings_filepath,
+    negative_class_embeddings_filepath,
+    positive_class_fasta_filepath=None,
+    negative_class_fasta_filepath=None,
     max_length=None,
 ):
     """
     Load embedding matrices from the given filepaths, filter them by sequence length
-    if a max_length was provided, create an array of labels for coding/noncoding,
+    if a max_length was provided, create an array of labels for the positive and negative classes,
     and return a single concatenated embedding matrix and labels array.
     """
-    embeddings_coding = np.load(coding_embeddings_filepath)
-    embeddings_noncoding = np.load(noncoding_embeddings_filepath)
+    embeddings_positive = np.load(positive_class_embeddings_filepath)
+    embeddings_negative = np.load(negative_class_embeddings_filepath)
 
     if max_length is not None:
-        if coding_fasta_filepath is None or noncoding_fasta_filepath is None:
+        if positive_class_fasta_filepath is None or negative_class_fasta_filepath is None:
             raise ValueError("FASTA files must be provided if max_length is not None.")
-        embeddings_coding = filter_embeddings_by_sequence_length(
-            embeddings_coding, coding_fasta_filepath, max_length
+        embeddings_positive = filter_embeddings_by_sequence_length(
+            embeddings_positive, positive_class_fasta_filepath, max_length
         )
-        embeddings_noncoding = filter_embeddings_by_sequence_length(
-            embeddings_noncoding, noncoding_fasta_filepath, max_length
+        embeddings_negative = filter_embeddings_by_sequence_length(
+            embeddings_negative, negative_class_fasta_filepath, max_length
         )
 
-    # create labels for the embeddings using 1 for 'coding' and 0 for 'noncoding'.
-    labels_coding = np.ones(embeddings_coding.shape[0])
-    labels_noncoding = np.zeros(embeddings_noncoding.shape[0])
+    # create labels for the embeddings using 1 for the positive class and 0 for the negative class.
+    labels_positive = np.ones(embeddings_positive.shape[0])
+    labels_negative = np.zeros(embeddings_negative.shape[0])
 
-    labels_all = np.concatenate([labels_coding, labels_noncoding])
-    embeddings_all = np.concatenate([embeddings_coding, embeddings_noncoding], axis=0)
+    labels_all = np.concatenate([labels_positive, labels_negative])
+    embeddings_all = np.concatenate([embeddings_positive, embeddings_negative], axis=0)
 
     return embeddings_all, labels_all
 
 
 @click.command()
 @click.option(
-    "--coding-filepath",
+    "--positive-class-filepath",
     type=click.Path(exists=True),
     required=True,
-    help="Path to a numpy file of embeddings of ORFs from coding transcripts.",
+    help="Path to a numpy file of protein embeddings representing the positive class.",
 )
 @click.option(
-    "--noncoding-filepath",
+    "--negative-class-filepath",
     type=click.Path(exists=True),
     required=True,
-    help="Path to a numpy file of embeddings of ORFs from noncoding transcripts.",
+    help="Path to a numpy file of protein embeddings representing the negative class.",
 )
 @click.option(
     "--model-dirpath",
@@ -75,20 +75,20 @@ def load_embeddings_and_create_labels(
     required=False,
     help="Path to the directory to which the trained model will be saved.",
 )
-def train_command(coding_filepath, noncoding_filepath, model_dirpath):
+def train_command(positive_class_filepath, negative_class_filepath, model_dirpath):
     """
-    Train a classifier using embeddings of peptides from coding and noncoding transcripts,
+    Train a classifier using PLM embeddings of peptides representing a positive and negative class,
     print the validation metrics, and save the trained model to a directory if one is provided.
 
     TODO: currently this command does not allow the user to specify a maximum sequence length
     by which to filter the embeddings. Doing so would require adding CLI options to specify
-    both a max length and the fasta filepaths of the coding and noncoding sequences
-    corresponding to the embedding matrices, as the sequence length
-    is not included in the embeddings files themselves.
+    the fasta filepaths of the positive- and negative-class sequences to which
+    the embedding matrices correspond, as the sequence length is not included
+    in the embeddings matrices themselves.
     """
     x_all, y_all = load_embeddings_and_create_labels(
-        coding_embeddings_filepath=coding_filepath,
-        noncoding_embeddings_filepath=noncoding_filepath,
+        positive_class_embeddings_filepath=positive_class_filepath,
+        negative_class_embeddings_filepath=negative_class_filepath,
     )
     model = models.EmbeddingsClassifier.init(verbose=True)
     model.train(x_all, y_all)
@@ -118,7 +118,7 @@ def train_command(coding_filepath, noncoding_filepath, model_dirpath):
     "--output-filepath",
     type=click.Path(exists=False),
     required=True,
-    help="Path to which to save the CSV of coding/noncoding predictions.",
+    help="Path to which to save the CSV of predictions.",
 )
 def predict_command(model_dirpath, embeddings_filepath, fasta_filepath, output_filepath):
     """
@@ -129,7 +129,7 @@ def predict_command(model_dirpath, embeddings_filepath, fasta_filepath, output_f
     x = np.load(embeddings_filepath)
     model = models.EmbeddingsClassifier.load(model_dirpath)
     predicted_probabilities = model.predict_proba(x)[:, 1]
-    predicted_labels = ["coding" if p > 0.5 else "noncoding" for p in predicted_probabilities]
+    predicted_labels = ["positive" if p > 0.5 else "negative" for p in predicted_probabilities]
 
     predictions = pd.DataFrame(
         {"predicted_label": predicted_labels, "predicted_probability": predicted_probabilities}

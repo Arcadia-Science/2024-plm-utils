@@ -54,11 +54,7 @@ class EmbeddingsClassifier:
     A minimal approach to defining and training a binary classifier given a matrix of embeddings.
 
     It first reduces the dimensionality of the embeddings using PCA,
-    then trains a random forest classifier on the reduced embeddings.
-
-    This approach was designed for predicting whether transcripts are coding or noncoding
-    from the ESM embeddings of the longest putative ORF from each transcript,
-    but it is general enough to be used with any kind of feature matrix.
+    then trains a random forest classifier on the matrix of principal components.
     """
 
     def __init__(self, pca, classifier, verbose=False):

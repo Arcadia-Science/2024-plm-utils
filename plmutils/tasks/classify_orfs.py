@@ -539,12 +539,12 @@ def train_and_evaluate(coding_dirpath, noncoding_dirpath, output_dirpath, max_le
         noncoding_embeddings_filepath = noncoding_dirpath / f"{filename_train}.npy"
 
         x, y = load_embeddings_and_create_labels(
-            coding_embeddings_filepath=coding_embeddings_filepath,
-            noncoding_embeddings_filepath=noncoding_embeddings_filepath,
-            coding_fasta_filepath=fasta_filepath_from_embedding_filepath(
+            positive_class_embeddings_filepath=coding_embeddings_filepath,
+            negative_class_embeddings_filepath=noncoding_embeddings_filepath,
+            positive_class_fasta_filepath=fasta_filepath_from_embedding_filepath(
                 coding_embeddings_filepath
             ),
-            noncoding_fasta_filepath=fasta_filepath_from_embedding_filepath(
+            negative_class_fasta_filepath=fasta_filepath_from_embedding_filepath(
                 noncoding_embeddings_filepath
             ),
             max_length=max_length,
@@ -559,11 +559,11 @@ def train_and_evaluate(coding_dirpath, noncoding_dirpath, output_dirpath, max_le
             coding_embeddings_filepath = coding_dirpath / f"{filename_test}.npy"
             noncoding_embeddings_filepath = noncoding_dirpath / f"{filename_test}.npy"
 
-            x_coding = np.load(coding_embeddings_filepath)
-            x_noncoding = np.load(noncoding_embeddings_filepath)
+            x_test_coding = np.load(coding_embeddings_filepath)
+            x_test_noncoding = np.load(noncoding_embeddings_filepath)
 
-            preds_coding = model.predict_proba(x_coding)[:, 1]
-            preds_noncoding = model.predict_proba(x_noncoding)[:, 1]
+            preds_coding = model.predict_proba(x_test_coding)[:, 1]
+            preds_noncoding = model.predict_proba(x_test_noncoding)[:, 1]
 
             records_coding = list(
                 SeqIO.parse(
