@@ -284,7 +284,7 @@ def download_data(dataset_metadata_filepath, output_dirpath, overwrite):
             filepath = dirpath / f"{row.species_id}.fa.gz"
             urls_filepaths.append((url, filepath))
 
-    return cdna_dirpath, ncrna_dirpath
+    download_files(urls_filepaths, overwrite=overwrite)
 
 
 @cli.command()
