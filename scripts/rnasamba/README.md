@@ -18,4 +18,4 @@ Then install the `rnasamba` package manually:
 ```bash
 pip install --no-deps rnasamba==0.2.5
 ```
-The `rnasamba` package must be installed manually because there is no way to specify the `--no-deps` flag in the `rnasamba.yml` file, and the direct deps of `rnasamba` include the original "version" of tensorflow 1.15, which is incompatible with CUDA 12 (the virtualenv above installs a fork of tensorfloe 1.15 maintained by nvidia that is compatible with CUDA 12).
+The `rnasamba` package must be installed manually because there is no way to specify the `--no-deps` flag in the `rnasamba.yml` file, and the direct deps of `rnasamba` include the original "version" of tensorflow 1.15, which is incompatible with CUDA 12. The virtualenv above installs a fork of tensorflow 1.15 maintained by nvidia that is compatible with CUDA 12.
