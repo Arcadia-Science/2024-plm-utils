@@ -4,7 +4,7 @@ This repo contains a python package called `plmutils` that provides a basic set 
 ## Installation
 Create a virtual env from the `envs/dev.yml` file:
 ```bash
-mamba env create -n plmutils-env -f dev.yml
+mamba env create -n plmutils-env -f envs/dev.yml
 ```
 
 Then activate the environment:
