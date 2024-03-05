@@ -21,7 +21,7 @@ Finally, check that pytorch can find the GPU:
 ```bash
 python -c "import torch; print(torch.cuda.is_available())"
 ```
-Although a GPU is not strictly required to generate embeddings, it provides a significant speedup (of 10x or more) compared to using the CPU.
+Although a GPU is not required to generate embeddings, it provides a significant speedup (of 10x or more) compared to using the CPU.
 
 ## Usage
 The main package defines several generic (i.e., task-nonspecific) commands:
