@@ -12,7 +12,7 @@ Then activate the environment:
 conda activate plmutils-env
 ```
 
-Then install the `plmutils` package in editable mode:
+Then clone this repo, `cd` into it, and install the `plmutils` package in editable mode:
 ```bash
 pip install -e .
 ```
