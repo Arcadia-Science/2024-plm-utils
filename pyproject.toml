@@ -6,7 +6,7 @@ requires = [
 ]
 
 [project]
-name = "smallesm"
+name = "plmutils"
 version = "0.0.0"
 description = "Predict sORFs using ESM embeddings"
 readme = "README.md"
@@ -15,11 +15,11 @@ license = { file = "LICENSE" }
 authors = [{ name = "Keith Cheveralls", email = "keith.chev@gmail.com" }]
 
 [project.scripts]
-smallesm = "smallesm.cli:cli"
+plmutils = "plmutils.cli:cli"
 
 [tool.setuptools]
 # explicitly specify the directory containing the package
-packages = ["smallesm"]
+packages = ["plmutils"]
 
 # allow use of __file__ to load data files included in the package
 zip-safe = false
