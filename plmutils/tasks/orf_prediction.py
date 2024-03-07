@@ -15,7 +15,7 @@ import tqdm
 from Bio import SeqIO
 
 from plmutils import models
-from plmutils.classifier import load_embeddings_and_create_labels
+from plmutils.classify import load_embeddings_and_create_labels
 from plmutils.embed import embed
 from plmutils.translate import translate
 
@@ -280,7 +280,7 @@ def download_data(dataset_metadata_filepath, output_dirpath, overwrite):
             (row.cdna_endpoint, cdna_dirpath),
             (row.ncrna_endpoint, ncrna_dirpath),
         ]:
-            url = urllib.parse.urljoin(row.root_url, endpoint)
+            url = urllib.parse.urljoin(str(row.root_url), str(endpoint))
             filepath = dirpath / f"{row.species_id}.fa.gz"
             urls_filepaths.append((url, filepath))
 
