@@ -2,17 +2,13 @@
 This repo contains a python package called `plmutils` that provides a basic set of tools for generating and analyzing embeddings of protein sequences using pre-trained protein language models (PLMs).
 
 ## Installation
-Create a virtual env from the `envs/dev.yml` file:
+First clone this repo and `cd` into it. Then create a virtual env from the `envs/dev.yml` file:
 ```bash
 mamba env create -n plmutils-env -f envs/dev.yml
-```
-
-Then activate the environment:
-```bash
 conda activate plmutils-env
 ```
 
-Then clone this repo, `cd` into it, and install the `plmutils` package in editable mode:
+Install the `plmutils` package in editable mode:
 ```bash
 pip install -e .
 ```
