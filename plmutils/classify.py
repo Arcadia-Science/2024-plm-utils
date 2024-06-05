@@ -46,7 +46,7 @@ def load_embeddings_and_create_labels(
             embeddings_negative, negative_class_fasta_filepath, max_length
         )
 
-    # create labels for the embeddings using 1 for the positive class and 0 for the negative class.
+    # Create labels for the embeddings using 1 for the positive class and 0 for the negative class.
     labels_positive = np.ones(embeddings_positive.shape[0])
     labels_negative = np.zeros(embeddings_negative.shape[0])
 
@@ -143,12 +143,12 @@ def predict_command(model_dirpath, embeddings_filepath, fasta_filepath, output_f
                 f"The number of records in the given fasta file ({len(records)}) "
                 f"does not match the number of predictions ({len(predictions)})."
             )
-        # we assume that the order of the records in the fasta file matches the order
+        # We assume that the order of the records in the fasta file matches the order
         # of the predictions (that is, the order of the rows in the embeddings matrix).
         for ind, _ in predictions.iterrows():
             predictions.at[ind, "sequence_id"] = records[ind].id
 
-    # reorder columns, just for the sake of readability.
+    # Reorder columns just for the sake of readability.
     predictions = predictions[["sequence_id", "predicted_probability", "predicted_label"]]
     predictions.to_csv(output_filepath, index=False, float_format="%.2f")
     print(f"Predictions saved to '{output_filepath}'")
