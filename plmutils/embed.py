@@ -9,7 +9,7 @@ import torch
 import tqdm
 from Bio import SeqIO
 
-# the allowed ESM-2 model variants and their embeddings dimensions.
+# The allowed ESM-2 model variants and their embeddings dimensions.
 # (from https://github.com/facebookresearch/esm)
 MODEL_NAMES_TO_DIMS = {
     "esm2_t48_15B_UR50D": 5120,
@@ -34,6 +34,7 @@ MODEL_NAMES_TO_DIMS = {
     "--layer-ind",
     type=int,
     required=True,
+    default=-1,
     help="Layer index from which to extract the embeddings (use -1 for the last layer)",
 )
 @click.option("--output-filepath", type=click.Path(exists=False), required=True, help="Output file")
@@ -68,7 +69,7 @@ def embed(fasta_filepath, model_name, layer_ind, output_filepath):
         if torch.backends.mps.is_available()
         else "cpu"
     )
-    print(f"Using device '{device}' for model inference.")
+    print(f"Using device '{device}' to generate embeddings.")
 
     model, alphabet = esm.pretrained.load_model_and_alphabet(model_name)
     model.eval()
@@ -77,13 +78,16 @@ def embed(fasta_filepath, model_name, layer_ind, output_filepath):
     dataset = esm.FastaBatchedDataset.from_file(fasta_filepath)
     batches = dataset.get_batch_indices(toks_per_batch, extra_toks_per_seq=1)
 
-    # note: the dataloader yields batches in the form of `(sequence_ids, sequences, tokens)`.
+    # Note: the dataloader yields batches in the form of `(sequence_ids, sequences, tokens)`.
     dataloader = torch.utils.data.DataLoader(
         dataset,
         collate_fn=alphabet.get_batch_converter(truncation_seq_length),
         batch_sampler=batches,
     )
     print(f"Read file '{fasta_filepath}' and found {len(dataset)} sequences")
+
+    if layer_ind != -1:
+        raise NotImplementedError("Embeddings can currently only be generated from the last layer.")
 
     if layer_ind == -1:
         layer_ind = model.num_layers
@@ -121,13 +125,14 @@ def embed(fasta_filepath, model_name, layer_ind, output_filepath):
         print(f"Embeddings matrix shape: {mean_embeddings.shape}")
 
         if mean_embeddings.shape[1] != MODEL_NAMES_TO_DIMS[model_name]:
-            print(
-                f"Warning: expected {MODEL_NAMES_TO_DIMS[model_name]}-dimensional embeddings, "
+            raise ValueError(
+                f"Expected {MODEL_NAMES_TO_DIMS[model_name]}-dimensional embeddings, "
                 f"but got {mean_embeddings.shape[1]}."
             )
+
         if mean_embeddings.shape[0] != len(dataset):
-            print(
-                f"Warning: the number of sequences in the fasta file was {len(dataset)}, "
+            raise ValueError(
+                f"The number of sequences in the fasta file was {len(dataset)}, "
                 f"but the number of generated embeddings is {mean_embeddings.shape[0]}."
             )
 

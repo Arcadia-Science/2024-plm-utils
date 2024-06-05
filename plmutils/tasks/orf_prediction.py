@@ -4,6 +4,7 @@ import os
 import pathlib
 import shutil
 import subprocess
+import tempfile
 import urllib
 from concurrent.futures import ThreadPoolExecutor
 
@@ -18,6 +19,8 @@ from plmutils import models
 from plmutils.classify import load_embeddings_and_create_labels
 from plmutils.embed import embed
 from plmutils.translate import translate
+
+MMSEQS_MIN_SEQUENCE_IDENTITY = 0.8
 
 
 def add_suffix_to_path(path: pathlib.Path, suffix: str) -> pathlib.Path:
@@ -185,19 +188,18 @@ def cluster_with_mmseqs(input_filepath, output_filepath_prefix, overwrite=False)
 
     output_filepath_prefix.parent.mkdir(parents=True, exist_ok=True)
 
-    mmseqs_internal_dir = output_filepath_prefix.parent / "mmseqs-internal"
-    command = f"""
-        mmseqs easy-cluster \
-        {input_filepath} \
-        {output_filepath_prefix} \
-        {mmseqs_internal_dir} \
-        --min-seq-id 0.8 \
-        --cov-mode 1 \
-        --cluster-mode 2
-    """
-    print(f"Running mmseqs:\n{command}")
-    subprocess.run(command, shell=True)
-    shutil.rmtree(mmseqs_internal_dir)
+    with tempfile.TemporaryDirectory() as mmseqs_internal_dir:
+        command = f"""
+            mmseqs easy-cluster \
+            {input_filepath} \
+            {output_filepath_prefix} \
+            {mmseqs_internal_dir} \
+            --min-seq-id {MMSEQS_MIN_SEQUENCE_IDENTITY} \
+            --cov-mode 1 \
+            --cluster-mode 2
+        """
+        print(f"Running mmseqs:\n{command}")
+        subprocess.run(command, shell=True)
 
 
 @log_calls
@@ -233,7 +235,6 @@ def filter_by_sequence_id_prefix(input_filepath, output_filepath, prefix):
     """
     Filter a FASTA file by the prefix of its sequence IDs.
     """
-    prefix = prefix.upper()
     command = f"seqkit grep -r -p ^{prefix} {input_filepath} -o {output_filepath}"
     subprocess.run(command, shell=True)
 
@@ -395,7 +396,7 @@ def construct_data(dataset_metadata_filepath, output_dirpath, subsample_factor):
             filter_by_sequence_id_prefix(
                 input_filepath=subsampled_filepath,
                 output_filepath=(final_output_dirpath / f"{species_id}.fa"),
-                prefix=species_id,
+                prefix=species_id.upper(),
             )
 
 
@@ -510,7 +511,14 @@ def fasta_filepath_from_embedding_filepath(embedding_filepath):
     "--output-dirpath", type=click.Path(exists=False, path_type=pathlib.Path), required=True
 )
 @click.option(
-    "--max-length", type=int, required=False, help="Maximum length of the peptides to use"
+    "--max-length",
+    type=int,
+    required=False,
+    help=(
+        "Maximum length, in amino acids, of the peptides to use for training and testing."
+        "Note that peptides are always trimmed to the input length of the embedding model; "
+        "this filter is separate from and downstream of that trimming."
+    ),
 )
 def train_and_evaluate(coding_dirpath, noncoding_dirpath, output_dirpath, max_length):
     """

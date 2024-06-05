@@ -126,9 +126,9 @@ def predict_command(model_dirpath, embeddings_filepath, fasta_filepath, output_f
     append the sequence IDs to the resulting predictions (if a fasta filepath is provided),
     and write the predictions to the output filepath as a CSV.
     """
-    x = np.load(embeddings_filepath)
+    embeddings_matrix = np.load(embeddings_filepath)
     model = models.EmbeddingsClassifier.load(model_dirpath)
-    predicted_probabilities = model.predict_proba(x)[:, 1]
+    predicted_probabilities = model.predict_proba(embeddings_matrix)[:, 1]
     predicted_labels = ["positive" if p > 0.5 else "negative" for p in predicted_probabilities]
 
     predictions = pd.DataFrame(

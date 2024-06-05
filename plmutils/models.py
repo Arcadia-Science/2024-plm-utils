@@ -120,7 +120,7 @@ class EmbeddingsClassifier:
         )
         return cls(pca, classifier, **kwargs)
 
-    def train(self, x, y, test_size=0.2, random_state=RANDOM_STATE):
+    def train(self, X, y, test_size=0.2, random_state=RANDOM_STATE):
         """
         x: the matrix of embeddings
         y: the corresponding labels (1 for the positive class, 0 for the negative class)
@@ -128,35 +128,35 @@ class EmbeddingsClassifier:
         Nomenclature note: we follow the sklearn convention of using `x` to denote
         the matrix of input features and `y` to denote the labels we are trying to predict.
         """
-        self.pca.fit(x)
-        x_pcs = self.pca.transform(x)
+        self.pca.fit(X)
+        X_pcs = self.pca.transform(X)
 
-        x_train, x_validation, y_train, y_validation = sklearn.model_selection.train_test_split(
-            x_pcs, y, test_size=test_size, random_state=random_state
+        X_train, X_validation, y_train, y_validation = sklearn.model_selection.train_test_split(
+            X_pcs, y, test_size=test_size, random_state=random_state
         )
 
-        self.classifier.fit(x_train, y_train)
+        self.classifier.fit(X_train, y_train)
 
-        y_validation_pred = self.classifier.predict_proba(x_validation)
+        y_validation_pred = self.classifier.predict_proba(X_validation)
         validation_metrics = calc_metrics(y_validation, y_validation_pred[:, 1])
         if self.verbose:
             pretty_print_metrics(validation_metrics, header="Validation metrics")
 
         return validation_metrics
 
-    def predict(self, x):
+    def predict(self, X):
         """
         Return binary predictions for the given matrix of embeddings.
         (1 for the positive class, 0 for the negative class)
         """
-        x_pcs = self.pca.transform(x)
-        return self.classifier.predict(x_pcs)
+        X_pcs = self.pca.transform(X)
+        return self.classifier.predict(X_pcs)
 
-    def predict_proba(self, x):
+    def predict_proba(self, X):
         """
         Return predicted probabilities for the given matrix of embeddings
         as an array of shape (x.shape[0], 2) in which the columns are the predicted probabilities
         for the negative and positive classes, respectively.
         """
-        x_pcs = self.pca.transform(x)
-        return self.classifier.predict_proba(x_pcs)
+        X_pcs = self.pca.transform(X)
+        return self.classifier.predict_proba(X_pcs)
