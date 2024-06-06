@@ -53,7 +53,7 @@ def test_embedding_matrix_row_order(artifacts_dirpath, tmpdir):
             layer_ind=-1,
         )
 
-    original_embeddings = np.load(str(original_fasta_filepath))
+    original_embeddings = np.load(str(original_output_filepath))
     reordered_embeddings = np.load(str(reordered_output_filepath))
 
     assert not np.allclose(original_embeddings, reordered_embeddings)
