@@ -9,7 +9,7 @@ import sklearn.model_selection
 RANDOM_STATE = 42
 
 
-def calc_metrics(y_true, y_pred_proba):
+def calc_metrics(y_true, y_pred_proba, threshold=0.5):
     """
     Calculate performance metrics for the given true and predicted labels.
 
@@ -20,7 +20,7 @@ def calc_metrics(y_true, y_pred_proba):
         (this is the second column of the array returned by the `predict_proba` method
         of sklearn classifiers).
     """
-    y_pred = (y_pred_proba > 0.5).astype(int)
+    y_pred = (y_pred_proba > threshold).astype(int)
 
     return {
         "auc_roc": sklearn.metrics.roc_auc_score(y_true, y_pred_proba),
@@ -138,7 +138,7 @@ class EmbeddingsClassifier:
         self.classifier.fit(X_train, y_train)
 
         y_validation_pred = self.classifier.predict_proba(X_validation)
-        validation_metrics = calc_metrics(y_validation, y_validation_pred[:, 1])
+        validation_metrics = calc_metrics(y_validation, y_validation_pred[:, 1], threshold=0.5)
         if self.verbose:
             pretty_print_metrics(validation_metrics, header="Validation metrics")
 

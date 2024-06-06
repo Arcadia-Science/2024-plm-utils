@@ -120,7 +120,14 @@ def train_command(positive_class_filepath, negative_class_filepath, model_dirpat
     required=True,
     help="Path to which to save the CSV of predictions.",
 )
-def predict_command(model_dirpath, embeddings_filepath, fasta_filepath, output_filepath):
+@click.option(
+    "--threshold",
+    type=float,
+    required=False,
+    default=0.5,
+    help="Threshold probability for classifying a sequence as positive.",
+)
+def predict_command(model_dirpath, embeddings_filepath, fasta_filepath, output_filepath, threshold):
     """
     Predict the labels for the given embeddings matrix and saved model,
     append the sequence IDs to the resulting predictions (if a fasta filepath is provided),
@@ -129,7 +136,9 @@ def predict_command(model_dirpath, embeddings_filepath, fasta_filepath, output_f
     embeddings_matrix = np.load(embeddings_filepath)
     model = models.EmbeddingsClassifier.load(model_dirpath)
     predicted_probabilities = model.predict_proba(embeddings_matrix)[:, 1]
-    predicted_labels = ["positive" if p > 0.5 else "negative" for p in predicted_probabilities]
+    predicted_labels = [
+        "positive" if p > threshold else "negative" for p in predicted_probabilities
+    ]
 
     predictions = pd.DataFrame(
         {"predicted_label": predicted_labels, "predicted_probability": predicted_probabilities}
