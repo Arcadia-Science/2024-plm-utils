@@ -7,6 +7,7 @@ import esm.pretrained
 import numpy as np
 import torch
 import tqdm
+from Bio import SeqIO
 
 # the allowed ESM-2 model variants and their embeddings dimensions.
 # (from https://github.com/facebookresearch/esm)
@@ -91,21 +92,29 @@ def embed(fasta_filepath, model_name, layer_ind, output_filepath):
         raise ValueError(f"Invalid layer index {layer_ind}")
 
     with torch.no_grad():
+        sequence_ids = []
         mean_embeddings = []
 
-        for _, sequences, toks in tqdm.tqdm(dataloader, total=len(batches)):
+        for sequence_headers, sequences, toks in tqdm.tqdm(dataloader, total=len(batches)):
             toks = toks.to(device, non_blocking=True)
             results = model(toks, repr_layers=[layer_ind], return_contacts=False)
             raw_embeddings = results["representations"][layer_ind]
 
-            for ind, sequence in enumerate(sequences):
+            for ind, (sequence_header, sequence) in enumerate(
+                zip(sequence_headers, sequences, strict=True)
+            ):
                 truncate_len = min(len(sequence), truncation_seq_length)
 
-                # the first token is the BOS token, so we skip it.
+                # The first token is the BOS token, so we skip it.
                 raw_embedding = raw_embeddings[ind, 1 : truncate_len + 1]
 
-                # we call `detach` to create a new tensor that is not part of the computation graph.
+                # Call `detach` to create a new tensor that is not part of the computation graph.
                 mean_embedding = raw_embedding.mean(dim=0).detach().cpu().numpy()
+
+                # We need to keep track of the sequence IDs because the dataloader
+                # does not preserve the order of the sequences.
+                sequence_id = sequence_header.split(" ")[0]
+                sequence_ids.append(sequence_id)
                 mean_embeddings.append(mean_embedding)
 
         mean_embeddings = np.stack(mean_embeddings)
@@ -121,6 +130,14 @@ def embed(fasta_filepath, model_name, layer_ind, output_filepath):
                 f"Warning: the number of sequences in the fasta file was {len(dataset)}, "
                 f"but the number of generated embeddings is {mean_embeddings.shape[0]}."
             )
+
+        # Reorder the embeddings matrix to match the order of the sequences in the input FASTA file.
+        fasta_file_sequence_ids = [record.id for record in SeqIO.parse(fasta_filepath, "fasta")]
+        sequence_id_to_ind = {sequence_id: ind for ind, sequence_id in enumerate(sequence_ids)}
+        reordered_inds = [
+            sequence_id_to_ind[sequence_id] for sequence_id in fasta_file_sequence_ids
+        ]
+        mean_embeddings = mean_embeddings[reordered_inds, :]
 
         np.save(output_filepath, mean_embeddings)
         print(f"Embeddings matrix written to '{output_filepath}'")
