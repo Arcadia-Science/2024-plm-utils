@@ -35,4 +35,5 @@ def test_translate_longest_only(artifacts_dirpath, tmpdir):
     input_records = list(SeqIO.parse(input_filepath, "fasta"))
     output_records = list(SeqIO.parse(output_filepath, "fasta"))
 
+    assert len(input_records) == len(output_records)
     assert set([r.id for r in input_records]) == set([r.id for r in output_records])
