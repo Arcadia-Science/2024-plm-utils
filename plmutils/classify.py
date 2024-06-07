@@ -5,8 +5,6 @@ from Bio import SeqIO
 
 from plmutils import models
 
-RANDOM_STATE = 42
-
 
 def filter_embeddings_by_sequence_length(embeddings, fasta_filepath, max_length):
     """

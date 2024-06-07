@@ -558,7 +558,7 @@ def train_and_evaluate(coding_dirpath, noncoding_dirpath, output_dirpath, max_le
             max_length=max_length,
         )
 
-        model = models.EmbeddingsClassifier.init(verbose=True)
+        model = models.EmbeddingsClassifier.create(verbose=True)
         model.train(x, y)
 
         for filename_test in filenames:
