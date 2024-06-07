@@ -570,8 +570,8 @@ def train_and_evaluate(coding_dirpath, noncoding_dirpath, output_dirpath, max_le
             x_test_coding = np.load(coding_embeddings_filepath)
             x_test_noncoding = np.load(noncoding_embeddings_filepath)
 
-            preds_coding = model.predict_proba(x_test_coding)[:, 1]
-            preds_noncoding = model.predict_proba(x_test_noncoding)[:, 1]
+            preds_coding = model.model.predict_proba(x_test_coding)[:, 1]
+            preds_noncoding = model.model.predict_proba(x_test_noncoding)[:, 1]
 
             records_coding = list(
                 SeqIO.parse(

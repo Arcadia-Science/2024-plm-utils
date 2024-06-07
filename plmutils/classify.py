@@ -75,7 +75,14 @@ def load_embeddings_and_create_labels(
     required=False,
     help="Path to the directory to which the trained model will be saved.",
 )
-def train_command(positive_class_filepath, negative_class_filepath, model_dirpath):
+@click.option(
+    "--n-pcs",
+    type=int,
+    required=False,
+    default=30,
+    help="Number of principal components to use for training the classifier.",
+)
+def train_command(positive_class_filepath, negative_class_filepath, model_dirpath, n_pcs):
     """
     Train a classifier using PLM embeddings of peptides representing a positive and negative class,
     print the validation metrics, and save the trained model to a directory if one is provided.
@@ -90,7 +97,7 @@ def train_command(positive_class_filepath, negative_class_filepath, model_dirpat
         positive_class_embeddings_filepath=positive_class_filepath,
         negative_class_embeddings_filepath=negative_class_filepath,
     )
-    model = models.EmbeddingsClassifier.init(verbose=True)
+    model = models.EmbeddingsClassifier.create(n_components=n_pcs, verbose=True)
     model.train(x_all, y_all)
 
     if model_dirpath is not None:
@@ -135,7 +142,7 @@ def predict_command(model_dirpath, embeddings_filepath, fasta_filepath, output_f
     """
     embeddings_matrix = np.load(embeddings_filepath)
     model = models.EmbeddingsClassifier.load(model_dirpath)
-    predicted_probabilities = model.predict_proba(embeddings_matrix)[:, 1]
+    predicted_probabilities = model.model.predict_proba(embeddings_matrix)[:, 1]
     predicted_labels = [
         "positive" if p > threshold else "negative" for p in predicted_probabilities
     ]
