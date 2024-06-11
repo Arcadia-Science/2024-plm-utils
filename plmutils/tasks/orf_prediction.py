@@ -516,8 +516,9 @@ def fasta_filepath_from_embedding_filepath(embedding_filepath):
     required=False,
     help=(
         "Maximum length, in amino acids, of the peptides to use for training and testing."
-        "Note that peptides are always trimmed to the input length of the embedding model; "
-        "this filter is separate from and downstream of that trimming."
+        "Note that the ESM-2 models have a maximum input sequence length of 1022 amino acids "
+        "and sequences longer than this are truncated. "
+        "This filter is separate from and downstream of that truncation."
     ),
 )
 def train_and_evaluate(coding_dirpath, noncoding_dirpath, output_dirpath, max_length):
