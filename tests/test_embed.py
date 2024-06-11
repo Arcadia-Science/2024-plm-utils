@@ -1,4 +1,5 @@
 import numpy as np
+import pytest
 from Bio import SeqIO
 
 from plmutils import embed
@@ -6,7 +7,8 @@ from plmutils import embed
 
 def test_embed(artifacts_dirpath, tmpdir):
     """
-    Test that the embed function generates embeddings for a file of peptide sequences.
+    Test that the embed function generates embeddings from a realistic FASTA file
+    of peptide sequences.
     """
     model_name = "esm2_t6_8M_UR50D"
     fasta_filepath = artifacts_dirpath / "peptides.fa"
@@ -22,6 +24,56 @@ def test_embed(artifacts_dirpath, tmpdir):
     records = list(SeqIO.parse(fasta_filepath, "fasta"))
     embeddings = np.load(str(output_filepath))
     assert embeddings.shape == (len(records), embed.MODEL_NAMES_TO_DIMS[model_name])
+
+
+@pytest.mark.parametrize("sequence", ["", "K", "KZ", "K-", "ABC", "ACDEFGHIKLMNPQRSTVWY"])
+def test_embed_edge_cases(sequence, tmpdir):
+    """
+    Test that the embed function generates embeddings for various edge cases.
+    """
+    model_name = "esm2_t6_8M_UR50D"
+    fasta_filepath = tmpdir / "peptides.fa"
+    output_filepath = tmpdir / "embeddings.npy"
+
+    with open(fasta_filepath, "w") as file:
+        file.write(">some_sequence_id\n")
+        file.write(f"{sequence}\n")
+
+    embed.embed(
+        fasta_filepath=fasta_filepath,
+        output_filepath=output_filepath,
+        model_name=model_name,
+        layer_ind=-1,
+    )
+
+    embeddings = np.load(str(output_filepath))
+    assert embeddings.shape == (1, embed.MODEL_NAMES_TO_DIMS[model_name])
+
+
+def test_embed_long_sequence(tmpdir):
+    """
+    Test that the embed function generates embeddings for a sequence longer than the maximum
+    allowed by the ESM-2 model.
+    """
+    model_name = "esm2_t6_8M_UR50D"
+    fasta_filepath = tmpdir / "peptides.fa"
+    output_filepath = tmpdir / "embeddings.npy"
+
+    # The longest sequence that can be embedded by the ESM-2 model is 1024 amino acids.
+    long_sequence = "A" * 1024 * 2
+    with open(fasta_filepath, "w") as file:
+        file.write(">some_sequence_id\n")
+        file.write(f"{long_sequence}\n")
+
+    embed.embed(
+        fasta_filepath=fasta_filepath,
+        output_filepath=output_filepath,
+        model_name=model_name,
+        layer_ind=-1,
+    )
+
+    embeddings = np.load(str(output_filepath))
+    assert embeddings.shape == (1, embed.MODEL_NAMES_TO_DIMS[model_name])
 
 
 def test_embedding_matrix_row_order(artifacts_dirpath, tmpdir):
