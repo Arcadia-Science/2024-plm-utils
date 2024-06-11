@@ -76,6 +76,5 @@ def test_train_and_predict(tmpdir):
     assert all(predictions["predicted_label"].isin(["positive", "negative"]))
 
     # Check that the probabilities are between 0 and 1 and are not all the same.
-    assert all(predictions["predicted_probability"].between(0, 1))
-    assert predictions["predicted_probability"].sum() > 0
-    assert predictions["predicted_probability"].sum() < num_sequences
+    assert all(predictions["predicted_probability"].between(0, 1), inclusive=True)
+    assert predictions["predicted_probability"].nunique() > 1
