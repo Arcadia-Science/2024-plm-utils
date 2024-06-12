@@ -29,7 +29,7 @@ def filter_transcripts_by_longest_peptide_length(
     transcripts_fasta_filepath, output_filepath, max_length
 ):
     """
-    filter the given fasta file of transcripts to remove any transcripts whose longest putative ORF
+    Filter the given fasta file of transcripts to remove any transcripts whose longest putative ORF
     is longer than the max_length.
     """
     # TODO: this path to the fasta file of longest putative ORFs from each transcript
@@ -41,7 +41,7 @@ def filter_transcripts_by_longest_peptide_length(
         / f"{transcripts_fasta_filepath.stem}.fa"
     )
 
-    # we first filter the peptides fasta file by length to generate a fasta file
+    # We first filter the peptides fasta file by length to generate a fasta file
     # with which to filter the transcripts.
     short_peptides_fasta_filepath = peptides_fasta_filepath.with_suffix(".short.fa")
     filter_sequences_by_length(
@@ -57,7 +57,7 @@ def filter_transcripts_by_longest_peptide_length(
 
 def filter_sequences_by_length(input_filepath, output_filepath, max_length):
     """
-    filter the given fasta file to remove any sequences that are longer than the max_length.
+    Filter the given fasta file to remove any sequences that are longer than the max_length.
     """
     with open(output_filepath, "w") as file_out:
         for record in SeqIO.parse(input_filepath, "fasta"):
@@ -86,7 +86,7 @@ def train_rnasamba(coding_train_filepath, noncoding_train_filepath, model_filepa
         [
             "rnasamba",
             "train",
-            # the number of epochs after the lowest validation loss before stopping;
+            # The number of epochs after the lowest validation loss before stopping;
             # we use 1 to stop training quickly, as soon as the validation loss starts increasing.
             "--early_stopping",
             "1",
@@ -110,7 +110,7 @@ def evaluate_rnasamba(
         "noncoding": noncoding_test_filepath,
     }
 
-    # temporary filepaths for the per-class predictions.
+    # Temporary filepaths for the per-class predictions.
     prediction_filepaths = {
         "coding": "tmp-coding-predictions.tsv",
         "noncoding": "tmp-noncoding-predictions.tsv",
@@ -168,7 +168,7 @@ def command(coding_dirpath, noncoding_dirpath, output_dirpath, max_length):
     """
     output_dirpath.mkdir(exist_ok=True, parents=True)
 
-    # delete any filtered files that may have been created in a previous call to this function.
+    # Delete any filtered files that may have been created in a previous call to this function.
     deleted_filtered_files([coding_dirpath, noncoding_dirpath])
 
     coding_filenames = sorted([path.stem for path in coding_dirpath.glob("*.fa")])
@@ -189,7 +189,7 @@ def command(coding_dirpath, noncoding_dirpath, output_dirpath, max_length):
         coding_filenames = [f"{filename}-filtered" for filename in coding_filenames]
         noncoding_filenames = [f"{filename}-filtered" for filename in noncoding_filenames]
 
-    # sanity-check that the same files are present in both directories.
+    # Sanity-check that the same files are present in both directories.
     assert set(coding_filenames) == set(noncoding_filenames)
     filenames = coding_filenames
 

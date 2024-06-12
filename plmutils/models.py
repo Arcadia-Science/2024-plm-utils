@@ -5,11 +5,12 @@ import sklearn
 import sklearn.decomposition
 import sklearn.ensemble
 import sklearn.model_selection
+import sklearn.pipeline
 
 RANDOM_STATE = 42
 
 
-def calc_metrics(y_true, y_pred_proba):
+def calc_metrics(y_true, y_pred_proba, threshold=0.5):
     """
     Calculate performance metrics for the given true and predicted labels.
 
@@ -20,7 +21,7 @@ def calc_metrics(y_true, y_pred_proba):
         (this is the second column of the array returned by the `predict_proba` method
         of sklearn classifiers).
     """
-    y_pred = (y_pred_proba > 0.5).astype(int)
+    y_pred = (y_pred_proba > threshold).astype(int)
 
     return {
         "auc_roc": sklearn.metrics.roc_auc_score(y_true, y_pred_proba),
@@ -57,9 +58,8 @@ class EmbeddingsClassifier:
     then trains a random forest classifier on the matrix of principal components.
     """
 
-    def __init__(self, pca, classifier, verbose=False):
-        self.pca = pca
-        self.classifier = classifier
+    def __init__(self, model, verbose=False):
+        self.model = model
         self.verbose = verbose
 
     def save(self, model_dirpath):
@@ -68,8 +68,7 @@ class EmbeddingsClassifier:
         """
         model_dirpath = pathlib.Path(model_dirpath)
         model_dirpath.mkdir(exist_ok=True, parents=True)
-        joblib.dump(self.pca, model_dirpath / "pca.joblib")
-        joblib.dump(self.classifier, model_dirpath / "classifier.joblib")
+        joblib.dump(self.model, model_dirpath / "model.joblib")
 
     @classmethod
     def load(cls, model_dirpath, **kwargs):
@@ -77,14 +76,13 @@ class EmbeddingsClassifier:
         Load a pre-trained model from the given directory.
         """
         model_dirpath = pathlib.Path(model_dirpath)
-        pca = joblib.load(model_dirpath / "pca.joblib")
-        classifier = joblib.load(model_dirpath / "classifier.joblib")
-        return cls(pca, classifier, **kwargs)
+        model = joblib.load(model_dirpath / "model.joblib")
+        return cls(model, **kwargs)
 
     @classmethod
-    def init(cls, n_components=30, n_estimators=30, min_samples_split=10, **kwargs):
+    def create(cls, n_components=30, n_estimators=30, min_samples_split=10, **kwargs):
         """
-        Initialize a new, untrained model with the given hyperparameters.
+        Create a new, untrained model with the given hyperparameters.
         A 'model' consists of PCA to reduce dimensionality followed by a random forest classifier.
 
         This method is separate from `__init__` because `__init__` is also used
@@ -108,55 +106,41 @@ class EmbeddingsClassifier:
             for fast training, but (anecdotally) model performance doesn't improve much
             with either more estimators or deeper trees.
         """
-        pca = sklearn.decomposition.PCA(n_components=n_components)
-
-        # `class_weight="balanced"` is used to compensate for class imbalance in the training data.
-        classifier = sklearn.ensemble.RandomForestClassifier(
-            n_estimators=n_estimators,
-            min_samples_split=min_samples_split,
-            class_weight="balanced",
-            n_jobs=-1,
-            random_state=RANDOM_STATE,
+        model = sklearn.pipeline.Pipeline(
+            [
+                ("pca", sklearn.decomposition.PCA(n_components=n_components)),
+                (
+                    "classifier",
+                    sklearn.ensemble.RandomForestClassifier(
+                        n_estimators=n_estimators,
+                        min_samples_split=min_samples_split,
+                        # Compensate for the class imbalance in the training data.
+                        class_weight="balanced",
+                        n_jobs=-1,
+                        random_state=RANDOM_STATE,
+                    ),
+                ),
+            ]
         )
-        return cls(pca, classifier, **kwargs)
+        return cls(model, **kwargs)
 
-    def train(self, x, y, test_size=0.2, random_state=RANDOM_STATE):
+    def train(self, X, y, test_size=0.2, random_state=RANDOM_STATE):
         """
-        x: the matrix of embeddings
+        X: the matrix of embeddings
         y: the corresponding labels (1 for the positive class, 0 for the negative class)
 
-        Nomenclature note: we follow the sklearn convention of using `x` to denote
+        Nomenclature note: we follow the sklearn convention of using `X` to denote
         the matrix of input features and `y` to denote the labels we are trying to predict.
         """
-        self.pca.fit(x)
-        x_pcs = self.pca.transform(x)
-
-        x_train, x_validation, y_train, y_validation = sklearn.model_selection.train_test_split(
-            x_pcs, y, test_size=test_size, random_state=random_state
+        X_train, X_validation, y_train, y_validation = sklearn.model_selection.train_test_split(
+            X, y, test_size=test_size, random_state=random_state
         )
 
-        self.classifier.fit(x_train, y_train)
+        self.model.fit(X_train, y_train)
 
-        y_validation_pred = self.classifier.predict_proba(x_validation)
-        validation_metrics = calc_metrics(y_validation, y_validation_pred[:, 1])
+        y_validation_pred = self.model.predict_proba(X_validation)
+        validation_metrics = calc_metrics(y_validation, y_validation_pred[:, 1], threshold=0.5)
         if self.verbose:
             pretty_print_metrics(validation_metrics, header="Validation metrics")
 
         return validation_metrics
-
-    def predict(self, x):
-        """
-        Return binary predictions for the given matrix of embeddings.
-        (1 for the positive class, 0 for the negative class)
-        """
-        x_pcs = self.pca.transform(x)
-        return self.classifier.predict(x_pcs)
-
-    def predict_proba(self, x):
-        """
-        Return predicted probabilities for the given matrix of embeddings
-        as an array of shape (x.shape[0], 2) in which the columns are the predicted probabilities
-        for the negative and positive classes, respectively.
-        """
-        x_pcs = self.pca.transform(x)
-        return self.classifier.predict_proba(x_pcs)

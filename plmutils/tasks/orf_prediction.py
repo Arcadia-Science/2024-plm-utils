@@ -4,6 +4,7 @@ import os
 import pathlib
 import shutil
 import subprocess
+import tempfile
 import urllib
 from concurrent.futures import ThreadPoolExecutor
 
@@ -18,6 +19,8 @@ from plmutils import models
 from plmutils.classify import load_embeddings_and_create_labels
 from plmutils.embed import embed
 from plmutils.translate import translate
+
+MMSEQS_MIN_SEQUENCE_IDENTITY = 0.8
 
 
 def add_suffix_to_path(path: pathlib.Path, suffix: str) -> pathlib.Path:
@@ -171,7 +174,7 @@ def cluster_with_mmseqs(input_filepath, output_filepath_prefix, overwrite=False)
     """
     Cluster the sequences in the input FASTA file using mmseqs2.
     """
-    # this is one of the files that will be created by mmseqs2; we need to hard-code its name
+    # This is one of the files that will be created by mmseqs2; we need to hard-code its name
     # so we can check if it exists and skip running mmseqs2 if it does.
     mmseqs_output_filepath = (
         output_filepath_prefix.parent / f"{output_filepath_prefix.name}_rep_seq.fasta"
@@ -185,19 +188,18 @@ def cluster_with_mmseqs(input_filepath, output_filepath_prefix, overwrite=False)
 
     output_filepath_prefix.parent.mkdir(parents=True, exist_ok=True)
 
-    mmseqs_internal_dir = output_filepath_prefix.parent / "mmseqs-internal"
-    command = f"""
-        mmseqs easy-cluster \
-        {input_filepath} \
-        {output_filepath_prefix} \
-        {mmseqs_internal_dir} \
-        --min-seq-id 0.8 \
-        --cov-mode 1 \
-        --cluster-mode 2
-    """
-    print(f"Running mmseqs:\n{command}")
-    subprocess.run(command, shell=True)
-    shutil.rmtree(mmseqs_internal_dir)
+    with tempfile.TemporaryDirectory() as mmseqs_internal_dir:
+        command = f"""
+            mmseqs easy-cluster \
+            {input_filepath} \
+            {output_filepath_prefix} \
+            {mmseqs_internal_dir} \
+            --min-seq-id {MMSEQS_MIN_SEQUENCE_IDENTITY} \
+            --cov-mode 1 \
+            --cluster-mode 2
+        """
+        print(f"Running mmseqs:\n{command}")
+        subprocess.run(command, shell=True)
 
 
 @log_calls
@@ -233,7 +235,6 @@ def filter_by_sequence_id_prefix(input_filepath, output_filepath, prefix):
     """
     Filter a FASTA file by the prefix of its sequence IDs.
     """
-    prefix = prefix.upper()
     command = f"seqkit grep -r -p ^{prefix} {input_filepath} -o {output_filepath}"
     subprocess.run(command, shell=True)
 
@@ -311,15 +312,15 @@ def construct_data(dataset_metadata_filepath, output_dirpath, subsample_factor):
     output directories or files in order to re-run certain steps of this de facto pipeline.
     """
 
-    # these are the paths to the raw data directories created by the `download_data` command.
+    # These are the paths to the raw data directories created by the `download_data` command.
     raw_cdna_dirpath = output_dirpath / "raw" / "cdna"
     raw_ncrna_dirpath = output_dirpath / "raw" / "ncrna"
 
-    # to clearly separate the processed and raw datasets,
+    # To clearly separate the processed and raw datasets,
     # we write all of the processed data to a subdirectory of the output directory.
     output_dirpath = output_dirpath / "processed"
 
-    # prepend the species ID to the sequence IDs in all of the coding and noncoding fasta files.
+    # Prepend the species ID to the sequence IDs in all of the coding and noncoding fasta files.
     # (we use the word "labeled" to refer to this)
     cdna_labeled_dirpath = output_dirpath / "labeled" / "cdna"
     ncrna_labeled_dirpath = output_dirpath / "labeled" / "ncrna"
@@ -328,23 +329,23 @@ def construct_data(dataset_metadata_filepath, output_dirpath, subsample_factor):
     for filepath in raw_ncrna_dirpath.glob("*.fa.gz"):
         prepend_filename_to_sequence_ids(filepath, (ncrna_labeled_dirpath / filepath.name))
 
-    # concatenate all of the labeled coding and noncoding transcripts into single files.
+    # Concatenate all of the labeled coding and noncoding transcripts into single files.
     all_cdna_filepath = output_dirpath / "labeled" / "cdna.fa.gz"
     all_ncrna_filepath = output_dirpath / "labeled" / "ncrna.fa.gz"
     cat_files(cdna_labeled_dirpath.glob("*.fa.gz"), all_cdna_filepath)
     cat_files(ncrna_labeled_dirpath.glob("*.fa.gz"), all_ncrna_filepath)
 
-    # filter out transcripts from the cdna file that are not truly protein coding.
-    # note that this coincides with switching nomenclature from 'cdna' to 'coding'.
+    # Filter out transcripts from the cdna file that are not truly protein coding.
+    # Note that this coincides with switching nomenclature from 'cdna' to 'coding'.
     all_coding_filepath = output_dirpath / "labeled" / "coding.fa.gz"
     extract_protein_coding_transcripts_from_cdna(all_cdna_filepath, all_coding_filepath)
 
-    # no filtering is necessary for the ncrna transcripts, but we switch nomenclature here
+    # No filtering is necessary for the ncrna transcripts, but we switch nomenclature here
     # to be consistent with the coding transcripts.
     all_noncoding_filepath = output_dirpath / "labeled" / "noncoding.fa.gz"
     shutil.move(all_ncrna_filepath, all_noncoding_filepath)
 
-    # merge the coding and noncoding transcripts into a single file for clustering.
+    # Merge the coding and noncoding transcripts into a single file for clustering.
     merged_coding_noncoding_filepath = output_dirpath / "labeled" / "coding-and-noncoding.fa.gz"
     cat_files(
         input_filepaths=(all_coding_filepath, all_noncoding_filepath),
@@ -358,27 +359,27 @@ def construct_data(dataset_metadata_filepath, output_dirpath, subsample_factor):
     )
     merged_coding_noncoding_filepath = merged_coding_noncoding_unzipped_filepath
 
-    # cluster all of the transcripts to reduce redundancy.
+    # Cluster all of the transcripts to reduce redundancy.
     mmseqs_output_filepath_prefix = output_dirpath / "mmseqs" / "mmseqs-output"
     cluster_with_mmseqs(
         input_filepath=merged_coding_noncoding_filepath,
         output_filepath_prefix=mmseqs_output_filepath_prefix,
     )
 
-    # this is the name of the file created by mmseqs2 containing representative sequences
+    # This is the name of the file created by mmseqs2 containing representative sequences
     # for each cluster.
     rep_seqs_filepath = (
         mmseqs_output_filepath_prefix.parent / f"{mmseqs_output_filepath_prefix.stem}_rep_seq.fasta"
     )
 
     for filepath in (all_coding_filepath, all_noncoding_filepath):
-        # filter out the non-representative sequences from each file to "deduplicate" it
+        # Filter out the non-representative sequences from each file to "deduplicate" it.
         deduped_filepath = add_suffix_to_path(filepath, "dedup")
         intersect_fasta_files(
             input_filepaths=[rep_seqs_filepath, filepath], output_filepath=deduped_filepath
         )
 
-        # subsample the deduped file to reduce the number of sequences and make training faster.
+        # Subsample the deduped file to reduce the number of sequences and make training faster.
         subsampled_filepath = add_suffix_to_path(deduped_filepath, f"ssx{subsample_factor}")
         subsample_fasta_file(
             input_filepath=deduped_filepath,
@@ -386,7 +387,7 @@ def construct_data(dataset_metadata_filepath, output_dirpath, subsample_factor):
             subsample_rate=(1 / subsample_factor),
         )
 
-        # split the subsampled file into separate files for each species using the prefixes
+        # Split the subsampled file into separate files for each species using the prefixes
         # we added to the sequence IDs above (using `prepend_filename_to_sequence_ids`).
         metadata = pd.read_csv(dataset_metadata_filepath, sep="\t")
         subsampled_filename = subsampled_filepath.with_suffix("").stem
@@ -395,7 +396,7 @@ def construct_data(dataset_metadata_filepath, output_dirpath, subsample_factor):
             filter_by_sequence_id_prefix(
                 input_filepath=subsampled_filepath,
                 output_filepath=(final_output_dirpath / f"{species_id}.fa"),
-                prefix=species_id,
+                prefix=species_id.upper(),
             )
 
 
@@ -458,7 +459,7 @@ def blast_peptipedia(dirpaths, peptipedia_filepath):
             shell=True,
         )
 
-    # we use "6" for the "tabular" format.
+    # We use "6" for the "tabular" format.
     blast_output_format = "6"
     blast_output_columns = (
         "qseqid sseqid full_sseq pident length qlen slen mismatch gapopen qstart qend sstart send "
@@ -510,7 +511,15 @@ def fasta_filepath_from_embedding_filepath(embedding_filepath):
     "--output-dirpath", type=click.Path(exists=False, path_type=pathlib.Path), required=True
 )
 @click.option(
-    "--max-length", type=int, required=False, help="Maximum length of the peptides to use"
+    "--max-length",
+    type=int,
+    required=False,
+    help=(
+        "Maximum length, in amino acids, of the peptides to use for training and testing."
+        "Note that the ESM-2 models have a maximum input sequence length of 1022 amino acids "
+        "and sequences longer than this are truncated. "
+        "This filter is separate from and downstream of that truncation."
+    ),
 )
 def train_and_evaluate(coding_dirpath, noncoding_dirpath, output_dirpath, max_length):
     """
@@ -528,7 +537,7 @@ def train_and_evaluate(coding_dirpath, noncoding_dirpath, output_dirpath, max_le
     coding_filenames = sorted([path.stem for path in coding_dirpath.glob("*.npy")])
     noncoding_filenames = sorted([path.stem for path in noncoding_dirpath.glob("*.npy")])
 
-    # sanity-check that the same files are present in both directories.
+    # Sanity-check that the same files are present in both directories.
     assert set(coding_filenames) == set(noncoding_filenames)
     filenames = coding_filenames
 
@@ -550,7 +559,7 @@ def train_and_evaluate(coding_dirpath, noncoding_dirpath, output_dirpath, max_le
             max_length=max_length,
         )
 
-        model = models.EmbeddingsClassifier.init(verbose=True)
+        model = models.EmbeddingsClassifier.create(verbose=True)
         model.train(x, y)
 
         for filename_test in filenames:
@@ -562,8 +571,8 @@ def train_and_evaluate(coding_dirpath, noncoding_dirpath, output_dirpath, max_le
             x_test_coding = np.load(coding_embeddings_filepath)
             x_test_noncoding = np.load(noncoding_embeddings_filepath)
 
-            preds_coding = model.predict_proba(x_test_coding)[:, 1]
-            preds_noncoding = model.predict_proba(x_test_noncoding)[:, 1]
+            preds_coding = model.model.predict_proba(x_test_coding)[:, 1]
+            preds_noncoding = model.model.predict_proba(x_test_noncoding)[:, 1]
 
             records_coding = list(
                 SeqIO.parse(
