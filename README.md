@@ -1,8 +1,8 @@
 # plm-utils
 
-This repo contains a python package called `plmutils` that provides some tools for generating embeddings of protein sequences using pre-trained protein language models (PLMs).
+This repository contains a Python package called `plmutils` that provides some tools for generating embeddings of protein sequences using pre-trained protein language models (PLMs).
 
-It also includes code to predict whether putative open reading frames (ORFs) are coding or noncoding based on their embeddings. See [below](#orf-prediction) for more details.
+It also includes code to predict whether putative open reading frames (ORFs) are coding or noncoding based on their embeddings. See [the section below about ORF prediction](#orf-prediction) for more details.
 
 It accompanies the pub ["Using protein language models to predict coding and noncoding transcripts"](https://doi.org/10.57844/arcadia-fa56-ee23).
 
@@ -49,7 +49,7 @@ This repo is prospectively organized as a generic tool for working with PLM embe
 
 ## Development
 
-We use `ruff` for formatting and linting; use `make format` and `make lint` to run formatting and linting locally. The CLIs are written using `click`. There is a single virtualenv that defines all direct deps of the `plmutils` package. As a design/engineering principle, we try to avoid the need for multiple conda envs or the use of workflow managers like snakemake or nextflow.
+We use `ruff` for formatting and linting; use `make format` and `make lint` to run formatting and linting locally. The CLIs are written using `click`. There is a single virtualenv that defines all direct dependencies of the `plmutils` package.
 
 ## Testing
 
@@ -59,4 +59,4 @@ There is also a test dataset that can be used to manually test the ORF-predictio
 
 ## Origin and context
 
-This repo was initially developed as a tool to identify sORFs for the [peptigate pipeline](https://github.com/Arcadia-Science/peptigate). This effort was motivated by the fact that existing tools for identifying sORFs are limited, poorly maintained, and generally operate at the transcript rather than ORF level (i.e., they predict whether a given *transcript* is coding or noncoding, rather than whether a given putative ORF represents a real protein/peptide or not). However, given the versatility and generality of embeddings produced by large PLMs like ESM-2, we decided to prospectively organize this repo in a more generic way to facilitate its use for future tasks that can be addressed with embeddings of protein sequences.
+This repo was initially developed as a tool to identify sORFs for [the peptigate pipeline](https://github.com/Arcadia-Science/peptigate). This effort was motivated by the fact that existing tools for identifying sORFs are limited, poorly maintained, and generally operate at the transcript rather than ORF level (i.e., they predict whether a given *transcript* is coding or noncoding, rather than whether a given putative ORF represents a real protein/peptide or not). However, given the versatility and generality of embeddings produced by large PLMs like ESM-2, we decided to prospectively organize this repo in a more generic way to facilitate its use for future tasks that can be addressed with embeddings of protein sequences.
