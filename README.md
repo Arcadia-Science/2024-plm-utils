@@ -49,7 +49,7 @@ This repo is prospectively organized as a generic tool for working with PLM embe
 
 ## Development
 
-We use `ruff` for formatting and linting; use `make format` and `make lint` to run formatting and linting locally. The CLIs are written using `click`. There is a single virtualenv that defines all direct dependencies of the `plmutils` package.
+We use `ruff` for formatting and linting; use `make format` and `make lint` to run formatting and linting locally. The CLIs are written using `click`. There is a single conda environment that defines all direct dependencies of the `plmutils` package.
 
 ## Testing
 
